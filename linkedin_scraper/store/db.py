@@ -208,21 +208,28 @@ class JobsDb:
             # Update every row whose verdict differs. A NULL prior always differs, but that first
             # judgment is a decision, not a reversal, so it is written without counting as flipped.
             updates: list[dict] = []
-            flipped = 0
+            to_relevant = to_irrelevant = 0
             for row in stored:
                 verdict = predicate(row.title, row.company, row.workplace_type, links.get(row.job_url, set()))
                 if verdict == row.is_relevant:
                     continue
                 updates.append({"url": row.job_url, "verdict": verdict})
-                if row.is_relevant is not None:
-                    flipped += 1
+                if row.is_relevant is not None:  # a reversal, not a first judgment
+                    if verdict:
+                        to_relevant += 1
+                    else:
+                        to_irrelevant += 1
             if updates:
                 conn.execute(
                     update(JobRow).where(JobRow.job_url == bindparam("url")).values(is_relevant=bindparam("verdict")),
                     updates,
                 )
 
-        logger.info(f"Relevance refresh: {flipped:,} verdicts flipped in {TABLE_JOBS_RAW}")
+        flipped = to_relevant + to_irrelevant
+        logger.info(
+            f"Relevance refresh: {flipped:,} verdicts flipped "
+            f"({to_relevant:,} now relevant, {to_irrelevant:,} now irrelevant) in {TABLE_JOBS_RAW}"
+        )
         return flipped
 
     def fill_missing_country_from_queries(self) -> int:

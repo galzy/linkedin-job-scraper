@@ -55,9 +55,8 @@ def recheck_relevance(config_file: str | Path) -> None:
         return
     db = JobsDb(path=str(DB_PATH))
     db.create_schema()
-    flipped = db.refresh_relevance(predicate=relevance_predicate(config))
+    db.refresh_relevance(predicate=relevance_predicate(config))
     db.close()
-    logger.success(f"Rechecked relevance: {flipped} verdicts flipped")
 
 
 def fetch_descriptions(config_file: str | Path) -> None:

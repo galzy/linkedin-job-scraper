@@ -9,10 +9,8 @@ from linkedin_scraper.config import WorkplaceType, load_config
 from linkedin_scraper.constants import CONFIG_PATH, DB_PATH, MAX_PAGES
 from linkedin_scraper.filters import (
     derive_workplace_types,
-    job_query_links,
     relevance_predicate,
     remove_duplicates,
-    remove_irrelevant_jobs,
 )
 from linkedin_scraper.geo import searched_countries
 from linkedin_scraper.job import Job
@@ -54,9 +52,8 @@ def describe_jobs(jobs: list[Job], client: HttpClient, workers: int, db: JobsDb)
 
 
 def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> None:
-    """Scrape, dedupe, filter, store the jobs, then describe the ones still lacking a description."""
+    """Scrape, dedupe, and store the jobs, judge relevance, then describe the ones still lacking a description."""
     init_logging()
-    # Before the load, so a config that fails to parse is still named in the log.
     logger.info(f"Starting scrape with {config_file}")
     start_time = time.perf_counter()
     started_at = datetime.now().isoformat(sep=" ", timespec="seconds")
@@ -67,8 +64,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
     db.create_schema()
     client = HttpClient.from_config(config.http)
 
-    # Only a session on LinkedIn's filtering pipeline yields honest workplace labels; without
-    # one every variant serves the identical unfiltered list, so there is nothing worth scraping.
+    # Ensure we have a filtering session before scraping, so we don't waste time on a run that will be ignored.
     if not acquire_filtering_session(config, client):
         client.close()
         db.close()
@@ -89,15 +85,11 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
     # Label each job by the tagged query that found it, so the workplace filter can judge it.
     query_types = {q.query_id: q.harvest_type for q in config.scrape_queries}
     types = derive_workplace_types(attribution, query_types)
-    untagged = WorkplaceType.UNTAGGED.value
-    jobs_deduped = [job.with_workplace_type(types.get(job.job_url, untagged)) for job in jobs_deduped]
+    jobs_deduped = [
+        job.with_workplace_type(types.get(job.job_url, WorkplaceType.UNTAGGED.value)) for job in jobs_deduped
+    ]
 
-    links = job_query_links(attribution)
-    jobs_relevant = remove_irrelevant_jobs(joblist=jobs_deduped, config=config, links=links)
-    logger.info(f"Relevant: {len(jobs_relevant):,} of {len(jobs_deduped):,} jobs")
-
-    # Every scraped job is stored, filtered or not, so irrelevant ones are not re-scraped
-    # next run. Only the jobs fetched below ever get a description.
+    # Every scraped job is stored, relevant or not, so irrelevant ones are not re-scraped next run.
     added = db.insert_jobs(jobs=jobs_deduped, countries=countries)
 
     # Record provenance before judging, since refresh_relevance reads each job's query links.
@@ -110,6 +102,8 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
 
     # After the insert and attribution, so this run's new rows are judged with their links.
     flipped = db.refresh_relevance(predicate=relevance_predicate(config))
+    relevant = db.relevant_among({job.job_url for job in jobs_deduped})
+    logger.info(f"Relevant: {relevant:,} of {len(jobs_deduped):,} jobs")
 
     if blocked is not None:
         logger.warning("Not describing while blocked; next run picks up the missing descriptions")
@@ -128,7 +122,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
         counts={
             "scraped": len(jobs_raw),
             "deduped": len(jobs_deduped),
-            "relevant": len(jobs_relevant),
+            "relevant": relevant,
             "added": added,
             "flipped": flipped,
         },

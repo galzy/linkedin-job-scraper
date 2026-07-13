@@ -1,4 +1,4 @@
-"""Pure transforms dropping the jobs we don't want: duplicates, then the ones the config rejects."""
+"""Pure job transforms: dedupe, derive workplace types, and the config's relevance predicate."""
 
 from collections import Counter, defaultdict
 from collections.abc import Callable
@@ -51,21 +51,12 @@ def derive_workplace_types(attribution: dict[str, Counter[str]], query_types: di
     return result
 
 
-def job_query_links(attribution: dict[str, Counter[str]]) -> dict[str, set[str]]:
-    """Invert attribution to the set of query ids that surfaced each job."""
-    links: dict[str, set[str]] = defaultdict(set)
-    for query_id, counter in attribution.items():
-        for job_url in counter:
-            links[job_url].add(query_id)
-    return links
-
-
 def relevance_predicate(config: Config) -> Callable[[str, str, str, set[str]], bool]:
     """Whether a job survives the config's filters, given the queries that surfaced it.
 
     Title and company are global; workplace type is per query — a job is kept if any query that
-    found it wants that type. The one place the filter is written down: the scrape applies it in
-    memory, and the ``is_relevant`` column caches what it returns.
+    found it wants that type. The one place the filter is written down: ``refresh_relevance``
+    applies it and caches the verdict in the ``is_relevant`` column.
     """
     title_include = [phrase.lower() for phrase in config.title_include]
     title_exclude = [phrase.lower() for phrase in config.title_exclude]
@@ -87,9 +78,3 @@ def relevance_predicate(config: Config) -> Callable[[str, str, str, set[str]], b
         return any(not wanted or workplace_type in wanted for wanted in surfaced) if surfaced else True
 
     return keep
-
-
-def remove_irrelevant_jobs(joblist: list[Job], config: Config, links: dict[str, set[str]]) -> list[Job]:
-    """Drop jobs rejected by the config's title, company, and per-query workplace filters."""
-    keep = relevance_predicate(config)
-    return [job for job in joblist if keep(job.title, job.company, job.workplace_type, links.get(job.job_url, set()))]

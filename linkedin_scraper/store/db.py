@@ -1,5 +1,5 @@
 from collections import Counter, defaultdict
-from collections.abc import Callable
+from collections.abc import Callable, Collection
 from datetime import datetime
 
 from loguru import logger
@@ -110,6 +110,14 @@ class JobsDb:
                 ).select_from(JobRow)
             ).one()
         return {"stored": stored, "relevant": kept, "missing_descriptions": lacking}
+
+    def relevant_among(self, job_urls: Collection[str]) -> int:
+        """How many of the given URLs are currently marked relevant."""
+        if not job_urls:
+            return 0
+        with self.engine.connect() as conn:
+            relevant = {u for (u,) in conn.execute(select(JobRow.job_url).where(JobRow.is_relevant.is_(True)))}
+        return len(relevant & set(job_urls))
 
     def insert_jobs(self, jobs: list[Job], countries: frozenset[str] = frozenset()) -> int:
         """Store the jobs, returning how many were new; ``countries`` scopes each location's metro label."""

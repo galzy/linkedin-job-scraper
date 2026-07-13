@@ -379,6 +379,17 @@ def test_totals_on_an_empty_database_are_zero(db):
     assert db.totals() == {"stored": 0, "relevant": 0, "missing_descriptions": 0}
 
 
+def test_relevant_among_counts_only_relevant_rows_within_the_given_urls(db):
+    db.insert_jobs([job(), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    # x/1 and x/2 are relevant Engineers; x/3 (Chef) is rejected. The count is scoped to the urls
+    # passed, so a relevant row outside the set (x/2) does not count, unlike the cumulative totals().
+    assert db.relevant_among({"https://x/1/", "https://x/3/"}) == 1
+    assert db.relevant_among({"https://x/1/", "https://x/2/", "https://x/3/"}) == 2
+    assert db.relevant_among({"https://x/unknown/"}) == 0
+    assert db.relevant_among(set()) == 0
+
+
 def test_refresh_relevance_judges_on_the_stored_workplace_type(db):
     db.insert_jobs([job().with_workplace_type("remote"), job(job_url="https://x/2/").with_workplace_type("on_site")])
 

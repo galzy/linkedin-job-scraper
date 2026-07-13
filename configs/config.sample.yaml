@@ -32,7 +32,7 @@ search_queries:
 title_exclude: [senior, manager, intern]
 company_exclude: [badcompany, anotherbadcompany]
 http:
-  max_requests_per_minute: 20
+  max_requests_per_minute: 12
   search_workers: 3
   description_workers: 3
   timeout: 20.0

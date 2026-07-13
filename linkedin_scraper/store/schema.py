@@ -8,6 +8,7 @@ from linkedin_scraper.constants import (
     TABLE_QUERIES,
     TABLE_RUN_QUERIES,
     TABLE_RUNS,
+    TABLE_SCRAPE_STAGING,
 )
 
 
@@ -92,3 +93,21 @@ class RunQueryRow(SqlBase):
 
     run_id: Mapped[int] = mapped_column(primary_key=True)
     query_id: Mapped[str] = mapped_column(primary_key=True)
+
+
+class StagingRow(SqlBase):
+    """One posting a query scraped this run, staged before the end-of-run pipeline consumes it.
+
+    Wiped at the start of every run; a crash mid-scrape leaves the completed queries' rows behind.
+    """
+
+    __tablename__ = TABLE_SCRAPE_STAGING
+
+    job_url: Mapped[str] = mapped_column(primary_key=True)
+    query_id: Mapped[str] = mapped_column(primary_key=True)
+    title: Mapped[str]
+    company: Mapped[str]
+    date: Mapped[str]
+    location: Mapped[str] = mapped_column(default="")
+    times_seen: Mapped[int] = mapped_column(default=1)  # cards for this posting under this query
+    seen_at: Mapped[str]

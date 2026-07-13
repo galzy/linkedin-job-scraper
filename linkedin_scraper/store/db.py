@@ -3,7 +3,7 @@ from collections.abc import Callable, Collection
 from datetime import datetime
 
 from loguru import logger
-from sqlalchemy import Row, bindparam, case, create_engine, func, select, text, update
+from sqlalchemy import Row, bindparam, case, create_engine, delete, func, select, text, update
 from sqlalchemy.dialects.sqlite import insert
 
 from linkedin_scraper.config import SearchQuery
@@ -22,6 +22,7 @@ from linkedin_scraper.store.schema import (
     RunQueryRow,
     RunRow,
     SqlBase,
+    StagingRow,
 )
 
 
@@ -62,6 +63,13 @@ _JOB_QUERY_UPSERT = _job_query_insert.on_conflict_do_update(
         "times_seen": JobQueryRow.times_seen + _job_query_insert.excluded.times_seen,
         "last_seen": _job_query_insert.excluded.last_seen,
     },
+)
+
+# A posting re-staged under the same query accumulates its card count.
+_staging_insert = insert(StagingRow)
+_STAGING_UPSERT = _staging_insert.on_conflict_do_update(
+    index_elements=[StagingRow.job_url, StagingRow.query_id],
+    set_={"times_seen": StagingRow.times_seen + _staging_insert.excluded.times_seen},
 )
 
 
@@ -118,6 +126,53 @@ class JobsDb:
         with self.engine.connect() as conn:
             relevant = {u for (u,) in conn.execute(select(JobRow.job_url).where(JobRow.is_relevant.is_(True)))}
         return len(relevant & set(job_urls))
+
+    def reset_staging(self) -> None:
+        """Clear the staging table so a new run starts from an empty scrape."""
+        with self.engine.begin() as conn:
+            conn.execute(delete(StagingRow))
+
+    def stage_jobs(self, jobs: list[Job], query_id: str) -> None:
+        """Persist one query's scraped cards, collapsing a posting's per-page repeats into times_seen."""
+        if not jobs:
+            return
+        seen_at = datetime.now().isoformat(sep=" ", timespec="seconds")
+        counts = Counter(job.job_url for job in jobs)
+        cards: dict[str, Job] = {}
+        for job in jobs:
+            cards.setdefault(job.job_url, job)  # first card wins, as the in-memory dedupe did
+        staged = [
+            {
+                "job_url": url,
+                "query_id": query_id,
+                "title": card.title,
+                "company": card.company,
+                "date": card.date,
+                "location": card.location,
+                "times_seen": counts[url],
+                "seen_at": seen_at,
+            }
+            for url, card in cards.items()
+        ]
+        with self.engine.begin() as conn:
+            conn.execute(_STAGING_UPSERT, staged)
+
+    def staged_scrape(self) -> tuple[list[Job], dict[str, Counter[str]]]:
+        """This run's staged cards as (postings deduped by url, per-query attribution)."""
+        attribution: dict[str, Counter[str]] = defaultdict(Counter)
+        jobs: dict[str, Job] = {}
+        with self.engine.connect() as conn:
+            for row in conn.execute(select(StagingRow)):
+                attribution[row.query_id][row.job_url] = row.times_seen
+                if row.job_url not in jobs:
+                    jobs[row.job_url] = Job(
+                        title=row.title,
+                        company=row.company,
+                        date=row.date,
+                        job_url=row.job_url,
+                        location=row.location,
+                    )
+        return list(jobs.values()), attribution
 
     def insert_jobs(self, jobs: list[Job], countries: frozenset[str] = frozenset()) -> int:
         """Store the jobs, returning how many were new; ``countries`` scopes each location's metro label."""

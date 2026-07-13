@@ -407,3 +407,34 @@ def test_a_rescrape_upgrades_untagged_to_a_known_type(db):
     db.insert_jobs([job().with_workplace_type("untagged")])
     db.insert_jobs([job().with_workplace_type("remote")])
     assert rows(db, "workplace_type") == [("remote",)]
+
+
+def test_staged_scrape_dedupes_by_url_and_attributes_per_query(db):
+    db.stage_jobs([job(job_url="https://x/1/"), job(job_url="https://x/1/"), job(job_url="https://x/2/")], "qA")
+    db.stage_jobs([job(job_url="https://x/1/")], "qB")
+
+    jobs, attribution = db.staged_scrape()
+
+    assert sorted(j.job_url for j in jobs) == ["https://x/1/", "https://x/2/"]  # one row per posting
+    assert attribution["qA"] == Counter({"https://x/1/": 2, "https://x/2/": 1})  # per-page cards counted
+    assert attribution["qB"] == Counter({"https://x/1/": 1})
+    assert sum(sum(c.values()) for c in attribution.values()) == 4  # the pre-dedup scraped total
+
+
+def test_staged_scrape_keeps_one_row_when_a_postings_title_drifts(db):
+    """LinkedIn serves one posting under drifting title text; the url is its identity, so it stays one row."""
+    db.stage_jobs([job(title="Engineer"), job(title="Engineer (Remote)")], "qA")  # same url
+
+    jobs, _ = db.staged_scrape()
+
+    assert [j.title for j in jobs] == ["Engineer"]  # first card wins
+
+
+def test_reset_staging_empties_the_table(db):
+    db.stage_jobs([job()], "qA")
+    db.reset_staging()
+
+    jobs, attribution = db.staged_scrape()
+
+    assert jobs == []
+    assert not attribution

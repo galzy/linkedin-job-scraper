@@ -1,29 +1,13 @@
-"""Pure job transforms: dedupe, derive workplace types, and the config's relevance predicate."""
+"""Pure job transforms: derive workplace types and the config's relevance predicate."""
 
 from collections import Counter, defaultdict
 from collections.abc import Callable
 
 from linkedin_scraper.config import Config, WorkplaceType
-from linkedin_scraper.job import Job
 
 _TAGGED = {WorkplaceType.ON_SITE.value, WorkplaceType.REMOTE.value, WorkplaceType.HYBRID.value}
 # Tie-break when noise shows a url under two tagged searches at once.
 _PRECEDENCE = {WorkplaceType.REMOTE.value: 0, WorkplaceType.HYBRID.value: 1, WorkplaceType.ON_SITE.value: 2}
-
-
-def remove_duplicates(values: list[Job]) -> list[Job]:
-    """Keep the first job seen for each posting URL, preserving order.
-
-    The URL carries LinkedIn's own posting id, which is what tells two openings apart:
-    one company can list several distinct jobs under one title.
-    """
-    seen = set()
-    unique = []
-    for job in values:
-        if job.job_url not in seen:
-            seen.add(job.job_url)
-            unique.append(job)
-    return unique
 
 
 def derive_workplace_types(attribution: dict[str, Counter[str]], query_types: dict[str, str]) -> dict[str, str]:

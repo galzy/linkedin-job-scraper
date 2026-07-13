@@ -7,11 +7,7 @@ from loguru import logger
 
 from linkedin_scraper.config import WorkplaceType, load_config
 from linkedin_scraper.constants import CONFIG_PATH, DB_PATH, MAX_PAGES
-from linkedin_scraper.filters import (
-    derive_workplace_types,
-    relevance_predicate,
-    remove_duplicates,
-)
+from linkedin_scraper.filters import derive_workplace_types, relevance_predicate
 from linkedin_scraper.geo import searched_countries
 from linkedin_scraper.job import Job
 from linkedin_scraper.logger import init_logging
@@ -70,16 +66,18 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
         db.close()
         raise NoFilteringSessionError("Every session draw ignored the workplace filter; nothing scraped")
 
-    # A block still leaves the jobs of the queries that ran; store them, skip descriptions, re-raise.
+    # Each query stages as it finishes, so a block still leaves the ones that ran on disk to read back.
+    db.reset_staging()
     blocked: BlockedError | None = None
     try:
-        jobs_raw, attribution = scrape_jobs(config=config, client=client, max_pages=max_pages)
+        scrape_jobs(config=config, client=client, stage=db.stage_jobs, max_pages=max_pages)
     except BlockedError as e:
-        logger.error(f"Blocked by LinkedIn: {e}. Storing the {len(e.jobs):,} jobs scraped so far")
-        blocked, jobs_raw, attribution = e, e.jobs, e.attribution
+        logger.error(f"Blocked by LinkedIn: {e}. Storing the jobs staged before the block")
+        blocked = e
 
-    logger.info(f"Total jobs scraped: {len(jobs_raw):,}")
-    jobs_deduped = remove_duplicates(values=jobs_raw)
+    jobs_deduped, attribution = db.staged_scrape()
+    scraped = sum(sum(counter.values()) for counter in attribution.values())
+    logger.info(f"Total jobs scraped: {scraped:,}")
     logger.info(f"Total jobs after removing duplicates: {len(jobs_deduped):,}")
 
     # Label each job by the tagged query that found it, so the workplace filter can judge it.
@@ -120,7 +118,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
         finished_at=datetime.now().isoformat(sep=" ", timespec="seconds"),
         status="blocked" if blocked is not None else "completed",
         counts={
-            "scraped": len(jobs_raw),
+            "scraped": scraped,
             "deduped": len(jobs_deduped),
             "relevant": relevant,
             "added": added,

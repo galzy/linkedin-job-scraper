@@ -1,29 +1,7 @@
 from collections import Counter
 
 from linkedin_scraper.config import load_and_validate_config
-from linkedin_scraper.filters import (
-    derive_workplace_types,
-    relevance_predicate,
-    remove_duplicates,
-)
-from linkedin_scraper.job import Job
-
-
-def job(title="Engineer", company="ACME", date="2024-01-01", url="https://x/1/"):
-    return Job(title=title, company=company, date=date, job_url=url)
-
-
-def test_remove_duplicates_keeps_first_occurrence_and_order():
-    jobs = [job(url="https://x/b/"), job(url="https://x/a/"), job(url="https://x/b/")]
-    out = remove_duplicates(jobs)
-    assert [j.job_url for j in out] == ["https://x/b/", "https://x/a/"]
-
-
-def test_remove_duplicates_collapses_one_url_even_when_the_titles_differ():
-    """LinkedIn can serve one posting under drifting title text. The URL is the identity the
-    jobs table uses, so the in-memory dedupe and the DB agree on what one job is."""
-    jobs = [job(title="Engineer"), job(title="Engineer (Remote)")]
-    assert [j.title for j in remove_duplicates(jobs)] == ["Engineer"]
+from linkedin_scraper.filters import derive_workplace_types, relevance_predicate
 
 
 def _config(**overrides):

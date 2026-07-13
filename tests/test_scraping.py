@@ -1,3 +1,4 @@
+from collections import Counter, defaultdict
 from pathlib import Path
 
 import pytest
@@ -181,42 +182,57 @@ def config(queries: list[SearchQuery], search_workers: int = 3) -> Config:
 VARIANTS = len(query().harvest_variants())
 
 
+class StagingSink:
+    """Collects what scrape_jobs stages per query, standing in for db.stage_jobs."""
+
+    def __init__(self):
+        self.jobs: list[Job] = []
+        self.attribution: dict[str, Counter[str]] = defaultdict(Counter)
+
+    def __call__(self, jobs: list[Job], query_id: str) -> None:
+        self.jobs.extend(jobs)
+        self.attribution[query_id].update(job.job_url for job in jobs)
+
+
 def test_an_empty_run_is_a_block_not_a_finish():
     """Blocked, LinkedIn serves empty 200s that parse exactly like an exhausted query. A run
     of nothing but them is the tell — without it the run stores nothing and reports success."""
     client = WallClient(good=0)
 
     with pytest.raises(BlockedError):
-        scrape_jobs(config([query()]), client)
+        scrape_jobs(config([query()]), client, StagingSink())
 
 
-def test_a_block_mid_run_keeps_the_jobs_scraped_before_it():
+def test_a_block_mid_run_keeps_the_jobs_staged_before_it():
     client = WallClient(good=1)  # one page of cards, then the wall goes up
+    sink = StagingSink()
 
-    with pytest.raises(BlockedError) as excinfo:
-        scrape_jobs(config([query()]), client)
+    with pytest.raises(BlockedError):
+        scrape_jobs(config([query()]), client, sink)
 
-    assert len(excinfo.value.jobs) == 1
+    assert len(sink.jobs) == 1
 
 
 def test_one_barren_query_does_not_read_as_a_block():
     """A location may genuinely have no matches; only a run with nothing at all is a block."""
     queries = [SearchQuery(keywords="yes", location="l"), SearchQuery(keywords="no", location="l")]
+    sink = StagingSink()
 
-    result = scrape_jobs(config(queries), ByKeywordClient())
+    scrape_jobs(config(queries), ByKeywordClient(), sink)
 
-    assert len(result.jobs) == VARIANTS  # "yes" surfaces its job under each of its variants
+    assert len(sink.jobs) == VARIANTS  # "yes" surfaces its job under each of its variants
 
 
 def test_one_query_giving_up_ends_the_run_even_though_the_run_has_jobs():
     """The run is not empty, so only the query's outcome says we were walled. Reading it as a
     finished query would exit 0 on a run that collected a fraction of its jobs."""
     queries = [SearchQuery(keywords="yes", location="l"), SearchQuery(keywords="walled", location="l")]
+    sink = StagingSink()
 
-    with pytest.raises(BlockedError, match="gave up mid-query") as excinfo:
-        scrape_jobs(config(queries), ByKeywordClient(walled="walled"))
+    with pytest.raises(BlockedError, match="gave up mid-query"):
+        scrape_jobs(config(queries), ByKeywordClient(walled="walled"), sink)
 
-    assert len(excinfo.value.jobs) == VARIANTS  # the run still hands back what "yes" found before it ended
+    assert len(sink.jobs) == VARIANTS  # the run still staged what "yes" found before it ended
 
 
 def test_a_mid_run_block_is_caught_even_though_the_run_has_jobs():
@@ -227,27 +243,29 @@ def test_a_mid_run_block_is_caught_even_though_the_run_has_jobs():
     client = WallClient(good=1)  # q1 page 0 only; everything after, q2 and the canary, is walled
 
     with pytest.raises(BlockedError, match="canary is blocked"):
-        scrape_jobs(config(queries, search_workers=1), client)  # 1 worker so the calls stay ordered
+        scrape_jobs(config(queries, search_workers=1), client, StagingSink())  # 1 worker so the calls stay ordered
 
 
 def test_scrape_jobs_attributes_each_job_to_the_query_that_found_it():
     q = SearchQuery(keywords="yes", location="l")
+    sink = StagingSink()
 
-    result = scrape_jobs(config([q]), ByKeywordClient())
+    scrape_jobs(config([q]), ByKeywordClient(), sink)
 
     # The search fans out, so the job is attributed to each variant that surfaced it, once apiece.
-    assert set(result.attribution) == {v.query_id for v in q.harvest_variants()}
-    assert all(sum(counter.values()) == 1 for counter in result.attribution.values())
+    assert set(sink.attribution) == {v.query_id for v in q.harvest_variants()}
+    assert all(sum(counter.values()) == 1 for counter in sink.attribution.values())
 
 
-def test_a_block_hands_back_the_attribution_gathered_before_it():
+def test_a_block_stages_the_attribution_gathered_before_it():
     queries = [SearchQuery(keywords="yes", location="l"), SearchQuery(keywords="walled", location="l")]
+    sink = StagingSink()
 
-    with pytest.raises(BlockedError) as excinfo:
-        scrape_jobs(config(queries), ByKeywordClient(walled="walled"))
+    with pytest.raises(BlockedError):
+        scrape_jobs(config(queries), ByKeywordClient(walled="walled"), sink)
 
     variant_ids = {v.query_id for v in queries[0].harvest_variants()}
-    assert all(sum(excinfo.value.attribution[qid].values()) == 1 for qid in variant_ids)
+    assert all(sum(sink.attribution[qid].values()) == 1 for qid in variant_ids)
 
 
 # --- acquire_filtering_session ------------------------------------------------

@@ -107,7 +107,7 @@ def test_a_blocked_run_exits_3_so_cron_can_tell_it_from_a_real_failure(monkeypat
     from linkedin_scraper import cli
 
     def blocked(config, max_pages):
-        raise cli.BlockedError("blocked mid-run", [], {})
+        raise cli.BlockedError("blocked mid-run")
 
     monkeypatch.setattr(cli, "run_scrape", blocked)
     monkeypatch.setattr(sys, "argv", ["linkedin_scraper", "scrape", str(SAMPLE)])

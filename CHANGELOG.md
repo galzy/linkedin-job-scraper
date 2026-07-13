@@ -5,6 +5,12 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
 ## [Unreleased]
 
 ### Added
+- Crash durability for the scrape. Each query's cards are flushed to a `scrape_staging` table the moment
+  the query finishes, and the end-of-run pipeline reads the run back from it. A crash mid-scrape now leaves
+  the finished queries' jobs on disk instead of losing the whole run; the table is wiped at each run's start.
+  `scrape_jobs` stages through a callback rather than returning its jobs in memory, so `BlockedError` no
+  longer carries a payload. Within-run dedupe moved from `filters.remove_duplicates` (removed) to the staging
+  read, keyed on `job_url`.
 - `LICENSE` (MIT) and `DISCLAIMER.md`. The one file still carrying upstream's copied description
   parser (`parse_job_description`) was rewritten first, so the project is wholly original work.
 - A `status` subcommand: the last run — timestamps, completed or blocked, its counts — and the stored

@@ -249,7 +249,7 @@ linkedin_scraper/
   cli.py                 the CLI: the argument parser and the subcommands behind it
   main.py                a scrape run end to end: scrape, dedupe, store, filter, describe
   config.py              config schema, validation, loading (Pydantic)
-  filters.py             pure transforms: dedupe, workplace types, the relevance predicate
+  filters.py             pure transforms: workplace types and the relevance predicate
   job.py                 the Job record, frozen; shared by parsing, filters, and the store
   geo.py                 the country a job's location names
   logger.py              loguru setup and its defaults

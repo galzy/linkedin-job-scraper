@@ -1,6 +1,6 @@
 """Decide which pages to fetch. Networking lives in ``http.py``, parsing in ``parsing.py``."""
 
-from collections import Counter, defaultdict
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from enum import StrEnum
 from typing import NamedTuple
@@ -15,12 +15,7 @@ from linkedin_scraper.scrape.parsing import count_cards, has_job_cards, parse_jo
 
 
 class BlockedError(RuntimeError):
-    """LinkedIn stopped serving results mid-run; carries what was gathered before the block."""
-
-    def __init__(self, msg: str, jobs: list[Job], attribution: dict[str, Counter[str]]):
-        super().__init__(msg)
-        self.jobs = jobs
-        self.attribution = attribution
+    """LinkedIn stopped serving results mid-run; the jobs gathered before it are already staged."""
 
 
 class NoFilteringSessionError(RuntimeError):
@@ -38,13 +33,6 @@ class QueryOutcome(StrEnum):
 class QueryResult(NamedTuple):
     jobs: list[Job]
     outcome: QueryOutcome
-
-
-class ScrapeResult(NamedTuple):
-    """A run's jobs plus, per query id, how many cards each posting was found on."""
-
-    jobs: list[Job]
-    attribution: dict[str, Counter[str]]
 
 
 def scrape_query(query: SearchQuery, client: HttpClient, tag: str, max_pages: int = MAX_PAGES) -> QueryResult:
@@ -74,11 +62,14 @@ def scrape_query(query: SearchQuery, client: HttpClient, tag: str, max_pages: in
     return QueryResult(jobs, QueryOutcome.CEILING)
 
 
-def scrape_jobs(config: Config, client: HttpClient, max_pages: int = MAX_PAGES) -> ScrapeResult:
-    """Run every query once, collecting the job cards.
+def scrape_jobs(
+    config: Config, client: HttpClient, stage: Callable[[list[Job], str], None], max_pages: int = MAX_PAGES
+) -> None:
+    """Run every query once, staging each query's cards as it finishes.
 
-    Queries run in parallel; the shared RateLimiter, not the worker count, is what holds
-    the request rate down.
+    Queries run in parallel; the shared RateLimiter, not the worker count, is what holds the
+    request rate down. ``stage`` persists a query's cards the moment it completes, so a crash
+    mid-run keeps what the finished queries scraped.
 
     Raises BlockedError two ways: a query that gives up mid-page (FAILED), or an empty first
     page that :func:`_channel_open` confirms is a block rather than a genuinely dry query.
@@ -94,28 +85,24 @@ def scrape_jobs(config: Config, client: HttpClient, max_pages: int = MAX_PAGES) 
     tags = [f"q{n}" for n in range(1, len(queries) + 1)]
     _log_roster(tags, queries)
 
-    all_jobs: list[Job] = []
-    attribution: dict[str, Counter[str]] = defaultdict(Counter)
     gave_up: list[str] = []
     empty: list[str] = []
     with ThreadPoolExecutor(max_workers=config.http.search_workers) as executor:
         results = executor.map(lambda t, q: scrape_query(q, client, t, max_pages), tags, queries)
         for tag, query, result in zip(tags, queries, results, strict=True):
-            all_jobs.extend(result.jobs)
-            attribution[query.query_id].update(job.job_url for job in result.jobs)
+            stage(result.jobs, query.query_id)  # persist this query before the next one runs
             if result.outcome is QueryOutcome.FAILED:
                 gave_up.append(tag)
             elif result.outcome is QueryOutcome.EXHAUSTED and not result.jobs:
                 empty.append(tag)
 
     if gave_up:
-        raise BlockedError(f"{', '.join(gave_up)} gave up mid-query", all_jobs, attribution)
+        raise BlockedError(f"{', '.join(gave_up)} gave up mid-query")
     # A healthy canary means the empty pages are real; only a blocked one ends the run.
     if empty and not _channel_open(config, client):
-        raise BlockedError(f"{', '.join(empty)} came back empty and the canary is blocked", all_jobs, attribution)
+        raise BlockedError(f"{', '.join(empty)} came back empty and the canary is blocked")
 
     logger.info("Finished scraping jobs")
-    return ScrapeResult(all_jobs, attribution)
 
 
 def _log_roster(tags: list[str], queries: list[SearchQuery]) -> None:

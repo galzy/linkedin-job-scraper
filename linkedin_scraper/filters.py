@@ -1,38 +1,31 @@
-"""Pure job transforms: derive workplace types and the config's relevance predicate."""
+"""Job transforms: derive workplace types and the config's relevance predicate."""
 
 from collections import Counter, defaultdict
 from collections.abc import Callable
 
+from loguru import logger
+
 from linkedin_scraper.config import Config, WorkplaceType
 
 _TAGGED = {WorkplaceType.ON_SITE.value, WorkplaceType.REMOTE.value, WorkplaceType.HYBRID.value}
-# Tie-break when noise shows a url under two tagged searches at once.
-_PRECEDENCE = {WorkplaceType.REMOTE.value: 0, WorkplaceType.HYBRID.value: 1, WorkplaceType.ON_SITE.value: 2}
 
 
 def derive_workplace_types(attribution: dict[str, Counter[str]], query_types: dict[str, str]) -> dict[str, str]:
-    """Each job's workplace type, read from which tagged search surfaced it.
+    """Each job's workplace type: the tagged search that surfaced it most, by sighting count.
 
-    A job seen only under the catch-all search is untagged; any tagged search is authoritative over it.
-    ``query_types`` maps a query id to the ``harvest_type`` token its search targeted.
+    ``query_types`` maps a query id to the ``harvest_type`` its search targeted. Every scraped query
+    is tagged, so a non-tagged one is an anomaly — warned about and skipped, leaving its jobs for the
+    caller to default to untagged.
     """
     tagged: dict[str, Counter[str]] = defaultdict(Counter)
-    seen: set[str] = set()
     for query_id, counter in attribution.items():
-        workplace = query_types.get(query_id, WorkplaceType.UNTAGGED.value)
+        workplace = query_types.get(query_id)
+        if workplace not in _TAGGED:
+            logger.warning(f"Attribution query {query_id} is {workplace!r}, not a tagged workplace search; skipping")
+            continue
         for job_url, count in counter.items():
-            seen.add(job_url)
-            if workplace in _TAGGED:
-                tagged[job_url][workplace] += count
-
-    result: dict[str, str] = {}
-    for job_url in seen:
-        hits = tagged.get(job_url)
-        if hits:
-            result[job_url] = max(hits, key=lambda wt: (hits[wt], -_PRECEDENCE[wt]))
-        else:
-            result[job_url] = WorkplaceType.UNTAGGED.value
-    return result
+            tagged[job_url][workplace] += count
+    return {job_url: max(hits, key=hits.get) for job_url, hits in tagged.items()}
 
 
 def relevance_predicate(config: Config) -> Callable[[str, str, str, set[str]], bool]:

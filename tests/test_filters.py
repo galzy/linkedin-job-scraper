@@ -42,18 +42,19 @@ def test_relevance_predicate_is_case_insensitive_both_ways():
 
 def test_derive_workplace_types_reads_the_type_from_the_query_that_found_it():
     attribution = {"qa": Counter({"u1": 1}), "qb": Counter({"u2": 1})}
-    assert derive_workplace_types(attribution, {"qa": "remote", "qb": "untagged"}) == {"u1": "remote", "u2": "untagged"}
+    assert derive_workplace_types(attribution, {"qa": "remote", "qb": "hybrid"}) == {"u1": "remote", "u2": "hybrid"}
 
 
-def test_derive_workplace_types_lets_a_tagged_search_win_over_the_catch_all():
-    attribution = {"tagged": Counter({"u1": 1}), "catch_all": Counter({"u1": 3})}
-    assert derive_workplace_types(attribution, {"tagged": "on_site", "catch_all": "untagged"}) == {"u1": "on_site"}
+def test_derive_workplace_types_resolves_a_cross_search_job_by_sightings():
+    # A url found under two tagged searches takes the type that saw it more often.
+    attribution = {"r": Counter({"u1": 1}), "h": Counter({"u1": 3})}
+    assert derive_workplace_types(attribution, {"r": "remote", "h": "hybrid"}) == {"u1": "hybrid"}
 
 
-def test_derive_workplace_types_breaks_a_two_type_tie_by_precedence():
-    # A url tagged both remote and hybrid with equal sightings — remote wins on precedence.
-    attribution = {"r": Counter({"u1": 2}), "h": Counter({"u1": 2})}
-    assert derive_workplace_types(attribution, {"r": "remote", "h": "hybrid"}) == {"u1": "remote"}
+def test_derive_workplace_types_skips_a_non_tagged_query():
+    # No scraped query is untagged; if one ever is, its jobs get no type here and the caller defaults them.
+    attribution = {"probe": Counter({"u1": 1})}
+    assert derive_workplace_types(attribution, {"probe": "untagged"}) == {}
 
 
 def _query_id(config):

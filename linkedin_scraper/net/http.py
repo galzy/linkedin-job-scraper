@@ -20,9 +20,6 @@ class Throttled(RequestException):
     Named in place of the generic ``HTTPError`` so throttling is greppable in the logs.
     """
 
-    def __init__(self, msg: str = "Throttled", *args, **kwargs):
-        super().__init__(msg, *args, **kwargs)
-
 
 # All three are temporary and lift on their own; 999 is the guest authwall, 403 its stand-in under load.
 THROTTLE_STATUSES = frozenset({403, 429, 999})
@@ -147,7 +144,7 @@ class HttpClient:
                 if response.status_code in THROTTLE_STATUSES:
                     self._handle_throttle(response)
                     raise Throttled(str(response.status_code))
-                if 400 <= response.status_code < 500 or response.status_code >= 600:
+                if 400 <= response.status_code < 500:
                     # Every remaining 4xx is a verdict on the request, not a hiccup.
                     logger.warning(f"HTTP {response.status_code}, not retrying: {url}")
                     return None

@@ -1,8 +1,8 @@
 [project]
 name = "linkedin_scraper"
 version = "0.2.0"
-description = "Scrapes LinkedIn job listings."
-authors = [{ name = "Gal", email = "galzy@users.noreply.github.com" }]
+description = "Scrapes LinkedIn job listings, filters them by keywords and stores them in a DB."
+authors = [{ name = "Gal Ziv", email = "galzy@users.noreply.github.com" }]
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]

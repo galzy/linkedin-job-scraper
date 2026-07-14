@@ -199,6 +199,19 @@ def test_record_postings_fills_the_matching_row(db):
     }
 
 
+def test_record_postings_flags_the_description_language(db):
+    """A written description is judged English or not in the same update; an undescribed row stays NULL."""
+    db.insert_jobs([job(), job(job_url="https://x/2/"), job(job_url="https://x/3/")])
+    db.record_postings(
+        [
+            job(job_description="We are hiring a backend engineer to build data pipelines in Python."),
+            job(job_url="https://x/2/", job_description="Cerchiamo uno sviluppatore backend per le nostre pipeline."),
+        ]
+    )
+
+    assert dict(rows(db, "job_url", "is_english")) == {"https://x/1/": 1, "https://x/2/": 0, "https://x/3/": None}
+
+
 def test_record_postings_stamps_open_status_and_verification_time(db):
     db.insert_jobs([job(), job(job_url="https://x/2/")])
     counts = db.record_postings([job(is_open=True), job(job_url="https://x/2/", is_open=False)])

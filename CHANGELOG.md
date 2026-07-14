@@ -5,6 +5,13 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
 ## [Unreleased]
 
 ### Added
+- Description language. `is_english` on `jobs_raw` flags whether a fetched description reads as English — a
+  rough proxy for a role open to non-local candidates, since a local-language posting almost always wants that
+  language even when it's remote. Judged by `langdetect` (seeded for determinism) the moment a description is
+  written in `record_postings`, so it costs no extra fetch; `NULL` while a row has no description or the text is
+  too short to call, `1`/`0` otherwise. The `jobs_filtered` view carries it, so `WHERE is_english = 1` narrows a
+  search to the English postings. (The column was added to the existing database by a one-off `ALTER TABLE` and
+  backfilled over its stored descriptions; new databases get it from the model.)
 - Job open-status. `is_open` and `last_verified` on `jobs_raw` record whether a posting still accepts
   applications, read from the guest posting page: a closed listing swaps its apply button for a
   `figure.closed-job` "No longer accepting applications" banner, which `parse_job_open` keys on. A removed

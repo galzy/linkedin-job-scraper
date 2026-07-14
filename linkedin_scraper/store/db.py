@@ -5,7 +5,7 @@ from collections.abc import Callable, Collection
 from datetime import datetime
 
 from loguru import logger
-from sqlalchemy import Row, and_, bindparam, create_engine, delete, func, insert, or_, select, text, update
+from sqlalchemy import Row, and_, create_engine, delete, func, insert, or_, select, text
 
 from linkedin_scraper.config import SearchQuery
 from linkedin_scraper.constants import (
@@ -16,6 +16,7 @@ from linkedin_scraper.constants import (
 )
 from linkedin_scraper.geo import country_of
 from linkedin_scraper.job import Job
+from linkedin_scraper.language import is_english
 from linkedin_scraper.store.schema import (
     JobQueryRow,
     JobRow,
@@ -206,14 +207,14 @@ class JobsDb:
                 verdict = predicate(row.title, row.company, row.workplace_type, links.get(row.job_url, set()))
                 if verdict == row.is_relevant:
                     continue
-                updates.append({"url": row.job_url, "value": verdict})
+                updates.append({"url": row.job_url, "is_relevant": verdict})
                 if row.is_relevant is not None:  # a reversal, not a first judgment
                     if verdict:
                         to_relevant += 1
                     else:
                         to_irrelevant += 1
             if updates:
-                _update_jobs_by_url(conn, "is_relevant", updates)
+                _update_jobs_by_url(conn, ["is_relevant"], updates)
 
         flipped = to_relevant + to_irrelevant
         logger.info(
@@ -237,12 +238,12 @@ class JobsDb:
                 if (country := by_query.get(query_id)) is not None:
                     by_job[job_url].add(country)
             updates = [
-                {"url": job_url, "value": next(iter(named))}
+                {"url": job_url, "country": next(iter(named))}
                 for (job_url,) in conn.execute(select(JobRow.job_url).where(JobRow.country.is_(None)))
                 if len(named := by_job.get(job_url, set())) == 1
             ]
             if updates:
-                _update_jobs_by_url(conn, "country", updates)
+                _update_jobs_by_url(conn, ["country"], updates)
 
         return len(updates)
 
@@ -317,20 +318,24 @@ class JobsDb:
         """Store fetched descriptions and open-status on rows already stored, matched on job_url.
 
         A job carries either, both, or neither: only the fields that arrived are written, so a failed
-        fetch (both None) touches nothing. Returns how many descriptions and open-status were written.
+        fetch (both None) touches nothing. A written description is judged English or not in the same
+        update. Returns how many descriptions and open-status were written.
         """
-        described = [{"url": job.key, "value": job.job_description} for job in jobs if job.job_description is not None]
-        verified = [{"url": job.key, "is_open": job.is_open} for job in jobs if job.is_open is not None]
         verified_at = datetime.now().isoformat(sep=" ", timespec="seconds")
+        described = [
+            {"url": job.key, "job_description": job.job_description, "is_english": is_english(job.job_description)}
+            for job in jobs
+            if job.job_description is not None
+        ]
+        verified = [
+            {"url": job.key, "is_open": job.is_open, "last_verified": verified_at}
+            for job in jobs
+            if job.is_open is not None
+        ]
         with self.engine.begin() as conn:
-            filled = _update_jobs_by_url(conn, "job_description", described) if described else 0
+            filled = _update_jobs_by_url(conn, ["job_description", "is_english"], described) if described else 0
             if verified:
-                conn.execute(
-                    update(JobRow)
-                    .where(JobRow.job_url == bindparam("url"))
-                    .values(is_open=bindparam("is_open"), last_verified=verified_at),
-                    verified,
-                )
+                _update_jobs_by_url(conn, ["is_open", "last_verified"], verified)
         closed = sum(job.is_open is False for job in jobs)
         return {"described": filled, "checked": len(verified), "closed": closed}
 

@@ -18,10 +18,14 @@ def _row(job: Job, seen_at: str, countries: frozenset[str]) -> dict:
     return job.model_dump() | {"country": country_of(job.location, countries), "is_open": True} | stamps
 
 
-def _update_jobs_by_url(conn: Connection, column: str, updates: list[dict]) -> int:
-    """Apply many ``{"url", "value"}`` updates to one jobs_raw column, matched by job_url; returns rows changed."""
+def _update_jobs_by_url(conn: Connection, columns: list[str], updates: list[dict]) -> int:
+    """Apply many by-url updates across one or more jobs_raw columns; returns rows changed.
+
+    Each row in ``updates`` carries ``url`` plus a value keyed by every name in ``columns``.
+    """
+    values = {column: bindparam(column) for column in columns}
     result = conn.execute(
-        update(JobRow).where(JobRow.job_url == bindparam("url")).values(**{column: bindparam("value")}),
+        update(JobRow).where(JobRow.job_url == bindparam("url")).values(**values),
         updates,
     )
     return result.rowcount

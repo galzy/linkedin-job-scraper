@@ -126,6 +126,7 @@ Every run writes each job it scrapes to **`jobs_raw`** — raw in that it holds 
 | `runs_seen` | How many runs surfaced this job — one per run, however many searches found it. |
 | `is_relevant` | Whether the config's filters keep the job. `NULL` until first judged, then recomputed every run. |
 | `job_description` | `NULL` until the job passes the filters, then its full text — or `Could not find job description` when the page genuinely has none. |
+| `is_english` | Whether the description reads as English — a rough proxy for a role open to non-local candidates. `1`/`0` once a description is fetched; `NULL` while none exists or the text is too short to judge. |
 | `is_open` | Whether the posting still accepts applications. Starts `1` (presumed open — it just surfaced in search), then a posting-page fetch settles it; `0` once it closes. `NULL` only on rows stored before this was tracked. |
 | `last_verified` | When `is_open` was last confirmed by fetching the page; `NULL` until that first fetch (the opening presumption is not a check). |
 
@@ -135,6 +136,8 @@ have since closed, hidden (a not-yet-checked job stays visible). Reach for `jobs
 ```sql
 -- what the filters keep
 SELECT * FROM jobs_filtered;
+-- kept jobs whose description reads as English (likelier to take a non-local candidate)
+SELECT title, company, country FROM jobs_filtered WHERE is_english = 1;
 -- what they threw away: do these read like postings you really don't want?
 SELECT title, company FROM jobs_raw WHERE is_relevant = 0;
 -- jobs first stored on a given day

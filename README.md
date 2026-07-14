@@ -88,7 +88,7 @@ uv run linkedin-scraper scrape configs/other.yaml --max-pages 2 # another config
 | `scrape [config] [--max-pages N]` | Scrape, filter, and store jobs, then refresh the relevant ones — fetching descriptions and re-checking open-status. |
 | `init-config <path>` | Write a starter config from the sample. Refuses to overwrite an existing file. |
 | `recheck-relevance [config]` | Re-apply a config's filters to every stored job, flipping `is_relevant` — a filter edit's effect without waiting for the next scrape. |
-| `refresh [config] [--recheck-days N]` | Fetch missing descriptions and re-check open-status for stored relevant jobs due for it — those older than N days (default 7) and not verified since. Also fills descriptions a blocked run missed. Uses the config's `http` settings only. |
+| `refresh [config] [--recheck-days N]` | Fetch missing data and re-check open-status for stored relevant jobs: anything still lacking a description or an open/closed verdict is fetched on sight; the rest are re-checked once older than N days (default 7) and not verified since. Uses the config's `http` settings only. |
 | `status` | Print the last run — when, how it ended, its counts — and the stored-job totals. |
 
 `config` defaults to `configs/config.yaml`. `--max-pages` caps every query for a quick run; it only
@@ -126,8 +126,8 @@ Every run writes each job it scrapes to **`jobs_raw`** — raw in that it holds 
 | `runs_seen` | How many runs surfaced this job — one per run, however many searches found it. |
 | `is_relevant` | Whether the config's filters keep the job. `NULL` until first judged, then recomputed every run. |
 | `job_description` | `NULL` until the job passes the filters, then its full text — or `Could not find job description` when the page genuinely has none. |
-| `is_open` | Whether the posting still accepts applications, read from its page when refreshed. `NULL` until first checked; `0` once it closes. |
-| `last_verified` | When `is_open` was last checked; `NULL` until the first check. |
+| `is_open` | Whether the posting still accepts applications. Starts `1` (presumed open — it just surfaced in search), then a posting-page fetch settles it; `0` once it closes. `NULL` only on rows stored before this was tracked. |
+| `last_verified` | When `is_open` was last confirmed by fetching the page; `NULL` until that first fetch (the opening presumption is not a check). |
 
 Day to day, query the **`jobs_filtered`** view — `jobs_raw` with the rejected postings, and any that
 have since closed, hidden (a not-yet-checked job stays visible). Reach for `jobs_raw` itself to audit:
@@ -263,7 +263,8 @@ linkedin_scraper/
     parsing.py           parse LinkedIn job pages (HTML -> Job)
   store/
     schema.py            the tables and view as declarative models
-    db.py                the upserts, relevance refresh, and description backfill
+    statements.py        the shared SQL: upserts, the row builder, the by-URL update
+    db.py                the JobsDb reads and writes: relevance refresh, posting refresh, provenance
 ```
 
 ### Tests

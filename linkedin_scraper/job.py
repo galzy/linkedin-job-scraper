@@ -7,7 +7,7 @@ class Job(BaseModel):
     """One job posting as scraped. ``job_description`` and ``is_open`` are None until the posting page is fetched.
 
     Its fields are the scraped columns of ``schema.JobRow``; the city/region/country columns are derived
-    from ``location`` by ``store._row``, so they cannot drift from the string they read.
+    from ``location`` by ``statements._row``, so they cannot drift from the string they read.
 
     Frozen, so a job already handed to the database cannot be written through: attach what the posting
     page yielded with :meth:`with_posting`, which returns a copy.

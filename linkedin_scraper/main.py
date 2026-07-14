@@ -1,5 +1,4 @@
 import time
-from concurrent.futures import ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
 
@@ -9,14 +8,13 @@ from linkedin_scraper.config import WorkplaceType, load_config
 from linkedin_scraper.constants import CONFIG_PATH, DB_PATH, MAX_PAGES
 from linkedin_scraper.filters import derive_workplace_types, relevance_predicate
 from linkedin_scraper.geo import searched_countries
-from linkedin_scraper.job import Job
 from linkedin_scraper.logger import init_logging
 from linkedin_scraper.net.http import HttpClient
 from linkedin_scraper.scrape.scraping import (
     BlockedError,
     NoFilteringSessionError,
     acquire_filtering_session,
-    fetch_description,
+    describe_jobs,
     scrape_jobs,
 )
 from linkedin_scraper.store.db import JobsDb
@@ -31,20 +29,6 @@ def format_duration(seconds: float) -> str:
     if minutes:
         return f"{minutes}m {secs}s"
     return f"{seconds:.2f}s"
-
-
-def describe_jobs(jobs: list[Job], client: HttpClient, workers: int, db: JobsDb) -> int:
-    """Fetch the jobs' descriptions in parallel and store the ones that arrived, returning how many."""
-    logger.info(f"Scraping {len(jobs):,} job descriptions with {workers} workers")
-    with ThreadPoolExecutor(max_workers=workers) as executor:
-        described = list(executor.map(lambda job: fetch_description(job, client), jobs))
-
-    fetched = [job for job in described if job.job_description is not None]
-    if len(fetched) < len(described):
-        # Left NULL on purpose, so the next run picks them up again.
-        logger.warning(f"{len(described) - len(fetched):,} descriptions failed; will retry next run")
-    db.update_descriptions(jobs=fetched)
-    return len(fetched)
 
 
 def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> None:
@@ -109,7 +93,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
         # From the DB, not this run's scrape, so refreshed verdicts and strays from past runs count too.
         to_describe = db.relevant_jobs_without_description()
         if to_describe:
-            describe_jobs(to_describe, client, config.http.description_workers, db)
+            describe_jobs(to_describe, client, config.http.description_workers, db.update_descriptions)
         else:
             logger.info("Every relevant job already has a description")
 

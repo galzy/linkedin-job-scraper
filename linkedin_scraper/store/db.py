@@ -340,7 +340,6 @@ class JobsDb:
             )
             updated = result.rowcount
 
-        logger.info(f"Filled descriptions on {updated:,} rows in {TABLE_JOBS_RAW}")
         return updated
 
     def close(self) -> None:

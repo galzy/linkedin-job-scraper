@@ -170,3 +170,17 @@ def fetch_description(job: Job, client: HttpClient) -> Job:
     if soup is not None:
         logger.debug(f"Scraped description: {job.title} @ {job.company}")
     return job.with_description(parse_job_description(soup) if soup is not None else None)
+
+
+def describe_jobs(jobs: list[Job], client: HttpClient, workers: int, store: Callable[[list[Job]], int]) -> int:
+    """Fetch the jobs' descriptions in parallel and store the ones that arrived, returning how many."""
+    logger.info(f"Scraping {len(jobs):,} job descriptions with {workers} workers")
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        described = list(executor.map(lambda job: fetch_description(job, client), jobs))
+
+    fetched = [job for job in described if job.job_description is not None]
+    if len(fetched) < len(described):
+        # Left NULL on purpose, so the next run picks them up again.
+        logger.warning(f"{len(described) - len(fetched):,} descriptions failed; will retry next run")
+    store(fetched)
+    return len(fetched)

@@ -13,10 +13,9 @@ from linkedin_scraper.config import ConfigurationError, load_config
 from linkedin_scraper.constants import CONFIG_PATH, CONFIGS_PATH, DB_PATH, MAX_PAGES, PROJECT_ROOT
 from linkedin_scraper.filters import relevance_predicate
 from linkedin_scraper.logger import init_logging
-from linkedin_scraper.main import describe_jobs
 from linkedin_scraper.main import main as run_scrape
 from linkedin_scraper.net.http import HttpClient
-from linkedin_scraper.scrape.scraping import BlockedError, NoFilteringSessionError
+from linkedin_scraper.scrape.scraping import BlockedError, NoFilteringSessionError, describe_jobs
 from linkedin_scraper.store.db import JobsDb
 
 SAMPLE_CONFIG = CONFIGS_PATH / "config.sample.yaml"
@@ -74,7 +73,7 @@ def fetch_descriptions(config_file: str | Path) -> None:
         return
 
     client = HttpClient.from_config(config.http)
-    filled = describe_jobs(jobs, client, config.http.description_workers, db)
+    filled = describe_jobs(jobs, client, config.http.description_workers, db.update_descriptions)
     client.close()
     db.close()
     logger.success(f"Filled {filled} descriptions")

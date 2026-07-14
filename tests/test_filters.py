@@ -40,6 +40,13 @@ def test_relevance_predicate_is_case_insensitive_both_ways():
     assert keep("PYTHON ENGINEER", "BADCORP", "remote", set()) is False
 
 
+def test_company_exclude_matches_the_whole_name_not_a_substring():
+    # "Turing" must not knock out "...Manufacturing"; company_exclude is whole-name, unlike title_exclude.
+    keep = relevance_predicate(_config(title_include=[], company_exclude=["Turing"]))
+    assert keep("Engineer", "Turing", "remote", set()) is False
+    assert keep("Engineer", "Hexagon Manufacturing Intelligence", "remote", set()) is True
+
+
 def test_derive_workplace_types_reads_the_type_from_the_query_that_found_it():
     attribution = {"qa": Counter({"u1": 1}), "qb": Counter({"u2": 1})}
     assert derive_workplace_types(attribution, {"qa": "remote", "qb": "hybrid"}) == {"u1": "remote", "u2": "hybrid"}

@@ -48,12 +48,13 @@ everything here.
 - `title_exclude` (array) — then drop jobs whose title matches one of these. Entries may
   themselves be anchored lists, flattened on load, so you can group phrases into named sections
   (see [Reusing a value across queries](#reusing-a-value-across-queries)).
-- `company_exclude` (array) — then drop jobs whose company matches one of these.
+- `company_exclude` (array) — then drop jobs whose company name equals one of these.
 - `http` (object) — request-layer tuning; every field optional. See [Tuning](#tuning).
 
-The three title/company filters match **case-insensitively on substrings**, and a list matches if
-*any* entry does: `title_exclude: [senior]` drops `Senior-Adjacent Engineer`. An empty list disables
-that filter.
+The two title filters match **case-insensitively on substrings**, and a list matches if *any* entry
+does: `title_exclude: [senior]` drops `Senior-Adjacent Engineer`. `company_exclude` matches the
+**whole company name** (case-insensitively), so an entry must be the full name — `Turing`, not
+`Tur` — and it won't catch `Hexagon Manufacturing`. An empty list disables that filter.
 
 **Gotchas**
 

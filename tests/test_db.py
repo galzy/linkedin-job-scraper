@@ -236,6 +236,17 @@ def test_postings_to_refresh_includes_relevant_rows_missing_a_description_at_any
     assert [j.key for j in db.postings_to_refresh("2020-01-01 00:00:00")] == ["https://x/1/"]
 
 
+def test_postings_to_refresh_includes_a_described_row_whose_open_status_was_never_checked(db):
+    """A legacy row keeps its description but has is_open NULL; it is fetched on sight, not aged into."""
+    db.insert_jobs([job(date="2024-01-01")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    with db.engine.begin() as conn:
+        conn.execute(text("UPDATE jobs_raw SET job_description = 'd', is_open = NULL"))
+
+    # The cutoff predates the posting, so only the never-checked-open-status branch can match.
+    assert [j.key for j in db.postings_to_refresh("2020-01-01 00:00:00")] == ["https://x/1/"]
+
+
 def test_postings_to_refresh_rechecks_an_aged_open_job_but_not_one_verified_recently(db):
     db.insert_jobs([job(date="2024-01-01"), job(date="2024-01-01", job_url="https://x/2/")])
     db.refresh_relevance(lambda title, company, workplace, qids: True)

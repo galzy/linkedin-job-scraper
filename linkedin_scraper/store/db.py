@@ -1,10 +1,11 @@
+"""The jobs database: the jobs themselves plus the queries, attribution, and runs behind them."""
+
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection
 from datetime import datetime
 
 from loguru import logger
-from sqlalchemy import Connection, Row, and_, bindparam, case, create_engine, delete, func, or_, select, text, update
-from sqlalchemy.dialects.sqlite import Insert, insert
+from sqlalchemy import Row, and_, bindparam, create_engine, delete, func, insert, or_, select, text, update
 
 from linkedin_scraper.config import SearchQuery
 from linkedin_scraper.constants import (
@@ -24,72 +25,15 @@ from linkedin_scraper.store.schema import (
     SqlBase,
     StagingRow,
 )
-
-
-def _row(job: Job, seen_at: str, countries: frozenset[str]) -> dict:
-    """The scraped job as a row: its fields, the country ``location`` names, and the DB's own stamps.
-
-    is_open starts True — the job just surfaced in search; a later posting-page fetch settles it, and
-    last_verified stays NULL until then, so the row is still due for a real check.
-    """
-    stamps = {"first_seen": seen_at, "last_seen": seen_at, "runs_seen": 1}
-    return job.model_dump() | {"country": country_of(job.location, countries), "is_open": True} | stamps
-
-
-def _update_jobs_by_url(conn: Connection, column: str, updates: list[dict]) -> int:
-    """Apply many ``{"url", "value"}`` updates to one jobs_raw column, matched by job_url; returns rows changed."""
-    result = conn.execute(
-        update(JobRow).where(JobRow.job_url == bindparam("url")).values(**{column: bindparam("value")}),
-        updates,
-    )
-    return result.rowcount
-
-
-def _upsert(row, on, assign) -> Insert:
-    """INSERT for ``row``; on a key conflict over ``on``, update the existing row with ``assign(excluded)``."""
-    stmt = insert(row)
-    return stmt.on_conflict_do_update(index_elements=on, set_=assign(stmt.excluded))
-
-
-# A re-scraped job updates these and nothing else: first_seen stays first, and job_description
-# survives rather than being refetched next run.
-_JOB_UPSERT = _upsert(
-    JobRow,
-    on=[JobRow.job_url],
-    assign=lambda excluded: {
-        "runs_seen": JobRow.runs_seen + 1,
-        "last_seen": excluded.last_seen,
-        # Refresh the type, but never downgrade a known one to untagged when this run missed it.
-        "workplace_type": case(
-            (excluded.workplace_type == "untagged", JobRow.workplace_type),
-            else_=excluded.workplace_type,
-        ),
-    },
+from linkedin_scraper.store.statements import (
+    _JOB_FETCH_COLS,
+    _JOB_QUERY_UPSERT,
+    _JOB_UPSERT,
+    _QUERY_UPSERT,
+    _STAGING_UPSERT,
+    _row,
+    _update_jobs_by_url,
 )
-
-# A query seen again keeps its first_used and just advances last_used.
-_QUERY_UPSERT = _upsert(QueryRow, on=[QueryRow.query_id], assign=lambda excluded: {"last_used": excluded.last_used})
-
-# An attribution seen again accumulates its sightings and advances last_seen.
-_JOB_QUERY_UPSERT = _upsert(
-    JobQueryRow,
-    on=[JobQueryRow.job_url, JobQueryRow.query_id],
-    assign=lambda excluded: {
-        "times_seen": JobQueryRow.times_seen + excluded.times_seen,
-        "last_seen": excluded.last_seen,
-    },
-)
-
-# A posting re-staged under the same query accumulates its card count.
-_STAGING_UPSERT = _upsert(
-    StagingRow,
-    on=[StagingRow.job_url, StagingRow.query_id],
-    assign=lambda excluded: {"times_seen": StagingRow.times_seen + excluded.times_seen},
-)
-
-# The columns that rebuild a Job to (re)fetch: its identity and card labels, not the job_description
-# or is_open that a fetch is about to replace.
-_JOB_FETCH_COLS = (JobRow.title, JobRow.company, JobRow.date, JobRow.job_url, JobRow.location, JobRow.workplace_type)
 
 
 class JobsDb:
@@ -112,6 +56,8 @@ class JobsDb:
         with self.engine.begin() as conn:
             conn.execute(text(f"DROP VIEW IF EXISTS {VIEW_JOBS_FILTERED}"))
             conn.execute(text(create_view))
+
+    # --- reads ---------------------------------------------------------------
 
     def relevant_jobs_without_description(self) -> list[Job]:
         """Stored relevant jobs whose description is still NULL, as Jobs ready to fetch."""
@@ -147,6 +93,49 @@ class JobsDb:
             relevant = {u for (u,) in conn.execute(select(JobRow.job_url).where(JobRow.is_relevant.is_(True)))}
         return len(relevant & set(job_urls))
 
+    def staged_scrape(self) -> tuple[list[Job], dict[str, Counter[str]]]:
+        """This run's staged cards as (postings deduped by url, per-query attribution)."""
+        attribution: dict[str, Counter[str]] = defaultdict(Counter)
+        jobs: dict[str, Job] = {}
+        with self.engine.connect() as conn:
+            for row in conn.execute(select(StagingRow)):
+                attribution[row.query_id][row.job_url] = row.times_seen
+                if row.job_url not in jobs:
+                    jobs[row.job_url] = Job(
+                        title=row.title,
+                        company=row.company,
+                        date=row.date,
+                        job_url=row.job_url,
+                        location=row.location,
+                    )
+        return list(jobs.values()), attribution
+
+    def postings_to_refresh(self, stale_before: str) -> list[Job]:
+        """Relevant, not-closed jobs to (re)fetch: those still missing data, plus ones due to be re-checked.
+
+        A missing description or a never-determined open-status (is_open NULL) is fetched on sight,
+        regardless of age. A job is otherwise due when first posted before ``stale_before`` (its posting
+        date, or first_seen when the card carried none) and last verified before it too — or never. A
+        confirmed-closed posting is left be, even one still missing a description: a removed listing keeps
+        404ing, so re-fetching is futile.
+        """
+        age = func.coalesce(func.nullif(JobRow.date, ""), JobRow.first_seen)
+        due = and_(
+            age < stale_before,
+            or_(JobRow.last_verified.is_(None), JobRow.last_verified < stale_before),
+        )
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                select(*_JOB_FETCH_COLS).where(
+                    JobRow.is_relevant.is_(True),
+                    JobRow.is_open.isnot(False),  # never re-fetch a confirmed-closed posting; NULL and open qualify
+                    or_(JobRow.job_description.is_(None), JobRow.is_open.is_(None), due),
+                )
+            ).all()
+        return [Job(**row._asdict()) for row in rows]
+
+    # --- writes --------------------------------------------------------------
+
     def reset_staging(self) -> None:
         """Clear the staging table so a new run starts from an empty scrape."""
         with self.engine.begin() as conn:
@@ -177,23 +166,6 @@ class JobsDb:
         ]
         with self.engine.begin() as conn:
             conn.execute(_STAGING_UPSERT, staged)
-
-    def staged_scrape(self) -> tuple[list[Job], dict[str, Counter[str]]]:
-        """This run's staged cards as (postings deduped by url, per-query attribution)."""
-        attribution: dict[str, Counter[str]] = defaultdict(Counter)
-        jobs: dict[str, Job] = {}
-        with self.engine.connect() as conn:
-            for row in conn.execute(select(StagingRow)):
-                attribution[row.query_id][row.job_url] = row.times_seen
-                if row.job_url not in jobs:
-                    jobs[row.job_url] = Job(
-                        title=row.title,
-                        company=row.company,
-                        date=row.date,
-                        job_url=row.job_url,
-                        location=row.location,
-                    )
-        return list(jobs.values()), attribution
 
     def insert_jobs(self, jobs: list[Job], countries: frozenset[str] = frozenset()) -> int:
         """Store the jobs, returning how many were new; ``countries`` scopes each location's metro label."""
@@ -361,28 +333,6 @@ class JobsDb:
                 )
         closed = sum(job.is_open is False for job in jobs)
         return {"described": filled, "checked": len(verified), "closed": closed}
-
-    def postings_to_refresh(self, stale_before: str) -> list[Job]:
-        """Relevant, not-closed jobs to (re)fetch: those missing a description, plus ones due to be re-checked.
-
-        A job is due when first posted before ``stale_before`` (its posting date, or first_seen when the
-        card carried none) and last verified before it too — or never. A confirmed-closed posting is left
-        be, even one still missing a description: a removed listing keeps 404ing, so re-fetching is futile.
-        """
-        age = func.coalesce(func.nullif(JobRow.date, ""), JobRow.first_seen)
-        due = and_(
-            age < stale_before,
-            or_(JobRow.last_verified.is_(None), JobRow.last_verified < stale_before),
-        )
-        with self.engine.connect() as conn:
-            rows = conn.execute(
-                select(*_JOB_FETCH_COLS).where(
-                    JobRow.is_relevant.is_(True),
-                    JobRow.is_open.isnot(False),  # never re-fetch a confirmed-closed posting; NULL and open qualify
-                    or_(JobRow.job_description.is_(None), due),
-                )
-            ).all()
-        return [Job(**row._asdict()) for row in rows]
 
     def close(self) -> None:
         self.engine.dispose()

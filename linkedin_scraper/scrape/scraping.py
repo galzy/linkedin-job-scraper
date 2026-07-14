@@ -11,7 +11,13 @@ from linkedin_scraper.config import Config, SearchQuery, WorkplaceType
 from linkedin_scraper.constants import MAX_PAGES, SESSION_DRAWS
 from linkedin_scraper.job import Job
 from linkedin_scraper.net.http import HttpClient
-from linkedin_scraper.scrape.parsing import count_cards, has_job_cards, parse_job_description, parse_page_jobs
+from linkedin_scraper.scrape.parsing import (
+    count_cards,
+    has_job_cards,
+    parse_job_description,
+    parse_job_open,
+    parse_page_jobs,
+)
 
 
 class BlockedError(RuntimeError):
@@ -161,26 +167,27 @@ def _channel_open(config: Config, client: HttpClient) -> bool:
     return is_open
 
 
-def fetch_description(job: Job, client: HttpClient) -> Job:
-    """A copy of ``job`` carrying its description, left None if the fetch failed.
+def fetch_posting(job: Job, client: HttpClient) -> Job:
+    """A copy of ``job`` carrying its description and open-status from one fetch of the posting page.
 
-    None marks the row for a retry next run; the not-found placeholder would look like an answer.
+    Both stay None if the fetch failed, which marks the row for a retry next run; the not-found
+    description placeholder would look like an answer.
     """
     soup = client.get(job.description_url)
-    if soup is not None:
-        logger.debug(f"Scraped description: {job.title} @ {job.company}")
-    return job.with_description(parse_job_description(soup) if soup is not None else None)
+    if soup is None:
+        return job.with_posting(description=None, is_open=None)
+    logger.debug(f"Scraped posting: {job.title} @ {job.company}")
+    return job.with_posting(parse_job_description(soup), parse_job_open(soup))
 
 
-def describe_jobs(jobs: list[Job], client: HttpClient, workers: int, store: Callable[[list[Job]], int]) -> int:
-    """Fetch the jobs' descriptions in parallel and store the ones that arrived, returning how many."""
-    logger.info(f"Scraping {len(jobs):,} job descriptions with {workers} workers")
+def refresh_postings(jobs: list[Job], client: HttpClient, workers: int, store: Callable[[list[Job]], dict]) -> dict:
+    """Fetch the postings in parallel, storing each one's description and open-status; returns the store's counts."""
+    logger.info(f"Refreshing {len(jobs):,} postings with {workers} workers")
     with ThreadPoolExecutor(max_workers=workers) as executor:
-        described = list(executor.map(lambda job: fetch_description(job, client), jobs))
+        fetched = list(executor.map(lambda job: fetch_posting(job, client), jobs))
 
-    fetched = [job for job in described if job.job_description is not None]
-    if len(fetched) < len(described):
+    failed = sum(job.job_description is None for job in fetched)
+    if failed:
         # Left NULL on purpose, so the next run picks them up again.
-        logger.warning(f"{len(described) - len(fetched):,} descriptions failed; will retry next run")
-    store(fetched)
-    return len(fetched)
+        logger.warning(f"{failed:,} postings failed; will retry next run")
+    return store(fetched)

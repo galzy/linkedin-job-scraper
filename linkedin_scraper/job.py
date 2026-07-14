@@ -4,13 +4,13 @@ from linkedin_scraper.constants import JOB_POSTING_URL
 
 
 class Job(BaseModel):
-    """One job posting as scraped. ``job_description`` is None until the posting page is fetched.
+    """One job posting as scraped. ``job_description`` and ``is_open`` are None until the posting page is fetched.
 
     Its fields are the scraped columns of ``db.JobRow``; the city/region/country columns are derived
     from ``location`` by ``db._row``, so they cannot drift from the string they read.
 
-    Frozen, so a job already handed to the database cannot be written through: attach a
-    description with :meth:`with_description`, which returns a copy.
+    Frozen, so a job already handed to the database cannot be written through: attach what the posting
+    page yielded with :meth:`with_posting`, which returns a copy.
     """
 
     model_config = ConfigDict(frozen=True)
@@ -21,6 +21,7 @@ class Job(BaseModel):
     job_url: str
     location: str = ""
     job_description: str | None = None
+    is_open: bool | None = None  # None until the posting page is fetched; False once it stops accepting applications
     workplace_type: str = "untagged"  # on_site / remote / hybrid / untagged, inferred across queries
 
     @property
@@ -30,11 +31,12 @@ class Job(BaseModel):
 
     @property
     def description_url(self) -> str:
-        """Where the description is fetched from: the guest API, keyed on the posting id."""
+        """Where the posting page — description and open-status — is fetched from: the guest API, by posting id."""
         return f"{JOB_POSTING_URL}/{self.job_url.rstrip('/').rsplit('/', 1)[-1]}"
 
-    def with_description(self, description: str | None) -> Job:
-        return self.model_copy(update={"job_description": description})
+    def with_posting(self, description: str | None, is_open: bool | None) -> Job:
+        """A copy carrying what one fetch of the posting page yielded: its description and open-status."""
+        return self.model_copy(update={"job_description": description, "is_open": is_open})
 
     def with_workplace_type(self, workplace_type: str) -> Job:
         return self.model_copy(update={"workplace_type": workplace_type})

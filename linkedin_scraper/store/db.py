@@ -3,7 +3,7 @@ from collections.abc import Callable, Collection
 from datetime import datetime
 
 from loguru import logger
-from sqlalchemy import Connection, Row, bindparam, case, create_engine, delete, func, select, text, update
+from sqlalchemy import Connection, Row, and_, bindparam, case, create_engine, delete, func, or_, select, text, update
 from sqlalchemy.dialects.sqlite import Insert, insert
 
 from linkedin_scraper.config import SearchQuery
@@ -27,9 +27,13 @@ from linkedin_scraper.store.schema import (
 
 
 def _row(job: Job, seen_at: str, countries: frozenset[str]) -> dict:
-    """The scraped job as a row: its fields, the country ``location`` names, and the DB's own stamps."""
+    """The scraped job as a row: its fields, the country ``location`` names, and the DB's own stamps.
+
+    is_open starts True — the job just surfaced in search; a later posting-page fetch settles it, and
+    last_verified stays NULL until then, so the row is still due for a real check.
+    """
     stamps = {"first_seen": seen_at, "last_seen": seen_at, "runs_seen": 1}
-    return job.model_dump() | {"country": country_of(job.location, countries)} | stamps
+    return job.model_dump() | {"country": country_of(job.location, countries), "is_open": True} | stamps
 
 
 def _update_jobs_by_url(conn: Connection, column: str, updates: list[dict]) -> int:
@@ -95,9 +99,11 @@ class JobsDb:
         SqlBase.metadata.create_all(self.engine)
 
         # SQLite freezes a view's column list at creation, so recreate it from the model's own.
+        # is_open IS NOT 0 keeps the still-open and the not-yet-checked (NULL), dropping only confirmed-closed.
         columns = ", ".join(JobRow.__table__.columns.keys())
         create_view = (
-            f"CREATE VIEW {VIEW_JOBS_FILTERED} AS SELECT {columns} FROM {TABLE_JOBS_RAW} WHERE is_relevant = 1"
+            f"CREATE VIEW {VIEW_JOBS_FILTERED} AS SELECT {columns} FROM {TABLE_JOBS_RAW} "
+            "WHERE is_relevant = 1 AND is_open IS NOT 0"
         )
         with self.engine.begin() as conn:
             conn.execute(text(f"DROP VIEW IF EXISTS {VIEW_JOBS_FILTERED}"))
@@ -332,17 +338,45 @@ class JobsDb:
         logger.info(f"Recorded run {run_id} ({status}) in {TABLE_RUNS}")
         return run_id
 
-    def update_descriptions(self, jobs: list[Job]) -> int:
-        """Fill job_description on rows already stored, matched on job_url."""
-        if not jobs:
-            return 0
+    def record_postings(self, jobs: list[Job]) -> dict[str, int]:
+        """Store fetched descriptions and open-status on rows already stored, matched on job_url.
 
+        A job carries either, both, or neither: only the fields that arrived are written, so a failed
+        fetch (both None) touches nothing. Returns how many descriptions and open-status were written.
+        """
+        described = [{"url": job.key, "value": job.job_description} for job in jobs if job.job_description is not None]
+        verified = [{"url": job.key, "is_open": job.is_open} for job in jobs if job.is_open is not None]
+        verified_at = datetime.now().isoformat(sep=" ", timespec="seconds")
         with self.engine.begin() as conn:
-            updated = _update_jobs_by_url(
-                conn, "job_description", [{"url": job.key, "value": job.job_description} for job in jobs]
-            )
+            filled = _update_jobs_by_url(conn, "job_description", described) if described else 0
+            if verified:
+                conn.execute(
+                    update(JobRow)
+                    .where(JobRow.job_url == bindparam("url"))
+                    .values(is_open=bindparam("is_open"), last_verified=verified_at),
+                    verified,
+                )
+        closed = sum(job.is_open is False for job in jobs)
+        return {"described": filled, "checked": len(verified), "closed": closed}
 
-        return updated
+    def postings_to_refresh(self, stale_before: str) -> list[Job]:
+        """Relevant jobs to (re)fetch: those missing a description, plus open ones due for reverification.
+
+        A job is due when it is not already closed, first posted before ``stale_before`` (its posting
+        date, or first_seen when the card carried none), and last verified before it too — or never.
+        """
+        cols = (JobRow.title, JobRow.company, JobRow.date, JobRow.job_url, JobRow.location, JobRow.workplace_type)
+        age = func.coalesce(func.nullif(JobRow.date, ""), JobRow.first_seen)
+        due = and_(
+            JobRow.is_open.isnot(False),  # skip only the confirmed-closed; NULL and open both qualify
+            age < stale_before,
+            or_(JobRow.last_verified.is_(None), JobRow.last_verified < stale_before),
+        )
+        with self.engine.connect() as conn:
+            rows = conn.execute(
+                select(*cols).where(JobRow.is_relevant.is_(True), or_(JobRow.job_description.is_(None), due))
+            ).all()
+        return [Job(**row._asdict()) for row in rows]
 
     def close(self) -> None:
         self.engine.dispose()

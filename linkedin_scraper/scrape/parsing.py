@@ -66,6 +66,11 @@ def parse_page_jobs(soup: BeautifulSoup) -> list[Job]:
 _DESCRIPTION_CLEANUPS = (("\n\n", ""), ("::marker", "-"), ("-\n", "- "), ("Show less", ""), ("Show more", ""))
 
 
+def parse_job_open(soup: BeautifulSoup) -> bool:
+    """Whether the posting still accepts applications: the closed-job banner is absent."""
+    return soup.find("figure", class_="closed-job") is None
+
+
 def parse_job_description(soup: BeautifulSoup) -> str:
     """Extract the description text, or NO_DESCRIPTION if the page carries none.
 

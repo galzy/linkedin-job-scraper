@@ -39,6 +39,8 @@ class JobRow(SqlBase):
     last_seen: Mapped[str]
     runs_seen: Mapped[int] = mapped_column(default=1)
     is_relevant: Mapped[bool | None] = mapped_column(default=None)  # NULL until refresh_relevance first judges it
+    is_open: Mapped[bool | None] = mapped_column(default=None)  # NULL until first verified against the posting page
+    last_verified: Mapped[str | None] = mapped_column(default=None)  # when is_open was last checked
 
 
 class QueryRow(SqlBase):

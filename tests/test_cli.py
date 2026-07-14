@@ -76,7 +76,7 @@ SAMPLE = PROJECT_ROOT / "configs" / "config.sample.yaml"
 
 @pytest.mark.parametrize(
     ("command", "args"),
-    [("recheck_relevance", [SAMPLE]), ("fetch_descriptions", [SAMPLE]), ("status", [])],
+    [("recheck_relevance", [SAMPLE]), ("refresh", [SAMPLE]), ("status", [])],
 )
 def test_stored_job_commands_bail_without_a_db(command, args, tmp_path, monkeypatch):
     """With no database, they warn and return rather than creating an empty one."""

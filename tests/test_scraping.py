@@ -13,7 +13,7 @@ from linkedin_scraper.scrape.scraping import (
     BlockedError,
     QueryOutcome,
     acquire_filtering_session,
-    fetch_description,
+    fetch_posting,
     scrape_jobs,
     scrape_query,
 )
@@ -340,32 +340,44 @@ def test_an_unanswerable_probe_costs_a_draw_and_moves_on():
         assert client.renewals == 1
 
 
-# --- fetch_description -------------------------------------------------------
+# --- fetch_posting -----------------------------------------------------------
 
 DESCRIPTION_PAGE = '<div class="description__text description__text--rich"><p>Build things.</p></div>'
+CLOSED_PAGE = (
+    '<figure class="closed-job closed-job__flavor topcard__flavor-row">'
+    '<figcaption class="closed-job__flavor--closed">No longer accepting applications</figcaption></figure>'
+)
 
 
-def test_fetch_description_attaches_the_text():
+def test_fetch_posting_attaches_the_text_and_marks_it_open():
     client = StubClient([DESCRIPTION_PAGE])
-    job = fetch_description(a_job(), client)
+    job = fetch_posting(a_job(), client)
     assert job.job_description == "Build things."
+    assert job.is_open is True
 
 
-def test_a_failed_fetch_leaves_the_description_none_rather_than_a_placeholder():
+def test_fetch_posting_marks_a_closed_posting_not_open():
+    client = StubClient([CLOSED_PAGE])
+    job = fetch_posting(a_job(), client)
+    assert job.is_open is False
+
+
+def test_a_failed_fetch_leaves_description_and_open_none_rather_than_a_placeholder():
     """None is what marks the row for a retry next run. Writing the not-found placeholder here
     would look like a real answer and the description would never be fetched again."""
     client = StubClient([None])
-    job = fetch_description(a_job(), client)
+    job = fetch_posting(a_job(), client)
     assert job.job_description is None
+    assert job.is_open is None
 
 
-def test_fetch_description_does_not_mutate_the_job_it_was_given():
+def test_fetch_posting_does_not_mutate_the_job_it_was_given():
     """main() has already stored these jobs by the time it calls this. Job is frozen, so the
     old mutation would now raise rather than silently write through."""
     client = StubClient([DESCRIPTION_PAGE])
     original = a_job()
 
-    described = fetch_description(original, client)
+    described = fetch_posting(original, client)
 
     assert original.job_description is None
     assert described.job_description == "Build things."
@@ -377,5 +389,5 @@ def test_fetch_description_does_not_mutate_the_job_it_was_given():
 def test_a_page_without_a_description_stores_the_placeholder_not_none():
     """The page loaded and genuinely has no description — a real answer, so don't retry it."""
     client = StubClient(["<html><body>no description here</body></html>"])
-    job = fetch_description(a_job(), client)
+    job = fetch_posting(a_job(), client)
     assert job.job_description == NO_DESCRIPTION

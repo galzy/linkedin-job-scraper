@@ -1,11 +1,11 @@
 import time
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from loguru import logger
 
 from linkedin_scraper.config import WorkplaceType, load_config
-from linkedin_scraper.constants import CONFIG_PATH, DB_PATH, MAX_PAGES
+from linkedin_scraper.constants import CONFIG_PATH, DB_PATH, MAX_PAGES, REVERIFY_AFTER_DAYS
 from linkedin_scraper.filters import derive_workplace_types, relevance_predicate
 from linkedin_scraper.geo import searched_countries
 from linkedin_scraper.logger import init_logging
@@ -14,7 +14,7 @@ from linkedin_scraper.scrape.scraping import (
     BlockedError,
     NoFilteringSessionError,
     acquire_filtering_session,
-    describe_jobs,
+    refresh_postings,
     scrape_jobs,
 )
 from linkedin_scraper.store.db import JobsDb
@@ -88,14 +88,16 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
     logger.info(f"Relevant: {relevant:,} of {len(jobs_deduped):,} jobs")
 
     if blocked is not None:
-        logger.warning("Not describing while blocked; next run picks up the missing descriptions")
+        logger.warning("Not refreshing postings while blocked; next run picks up the missing ones")
     else:
-        # From the DB, not this run's scrape, so refreshed verdicts and strays from past runs count too.
-        to_describe = db.relevant_jobs_without_description()
-        if to_describe:
-            describe_jobs(to_describe, client, config.http.description_workers, db.update_descriptions)
+        # From the DB, not this run's scrape, so refreshed verdicts and strays from past runs count too:
+        # jobs still lacking a description, plus open ones old enough to be re-checked for closure.
+        cutoff = (datetime.now() - timedelta(days=REVERIFY_AFTER_DAYS)).isoformat(sep=" ", timespec="seconds")
+        to_refresh = db.postings_to_refresh(cutoff)
+        if to_refresh:
+            refresh_postings(to_refresh, client, config.http.description_workers, db.record_postings)
         else:
-            logger.info("Every relevant job already has a description")
+            logger.info("No stored jobs are due for a refresh")
 
     db.record_run(
         started_at=started_at,

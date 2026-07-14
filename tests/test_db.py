@@ -29,6 +29,7 @@ def job(
     job_url="https://x/1/",
     job_description=None,
     location="Bologna",
+    is_open=None,
 ):
     return Job(
         title=title,
@@ -37,6 +38,7 @@ def job(
         date=date,
         job_url=job_url,
         job_description=job_description,
+        is_open=is_open,
     )
 
 
@@ -123,7 +125,7 @@ def test_a_resighting_does_not_wipe_a_stored_description(db):
     """The upsert names the columns it touches; job_description is not one, or every re-scrape
     would throw away the description and refetch it next run."""
     db.insert_jobs([job()])
-    db.update_descriptions([job(job_description="Build things.")])
+    db.record_postings([job(job_description="Build things.")])
     db.insert_jobs([job()])
 
     assert rows(db, "job_description") == [("Build things.",)]
@@ -139,6 +141,21 @@ def test_a_new_row_is_unjudged_until_refresh(db):
     """Insert leaves is_relevant NULL; refresh_relevance is the one thing that ever decides it."""
     db.insert_jobs([job()])
     assert rows(db, "is_relevant") == [(None,)]
+
+
+def test_a_new_row_is_presumed_open_but_not_yet_verified(db):
+    """It just surfaced in search, so is_open starts True; last_verified stays NULL until a page fetch."""
+    db.insert_jobs([job()])
+    assert rows(db, "is_open", "last_verified") == [(1, None)]
+
+
+def test_a_resighting_does_not_reopen_a_closed_job(db):
+    """The upsert never touches is_open, so a verified verdict outlives a later search sighting."""
+    db.insert_jobs([job()])
+    db.record_postings([job(is_open=False)])
+    db.insert_jobs([job()])  # seen again in search
+
+    assert rows(db, "is_open") == [(0,)]
 
 
 def test_refresh_relevance_flags_the_rows_the_filters_reject(db):
@@ -172,9 +189,9 @@ def test_the_filtered_view_hides_the_rows_the_filters_reject(db):
     assert len(rows(db, "title")) == 2  # the raw row is still there to audit
 
 
-def test_update_descriptions_fills_the_matching_row(db):
+def test_record_postings_fills_the_matching_row(db):
     db.insert_jobs([job(), job(job_url="https://x/2/")])
-    assert db.update_descriptions([job(job_description="Build things.")]) == 1
+    assert db.record_postings([job(job_description="Build things.")]) == {"described": 1, "checked": 0, "closed": 0}
 
     assert dict(rows(db, "job_url", "job_description")) == {
         "https://x/1/": "Build things.",
@@ -182,11 +199,87 @@ def test_update_descriptions_fills_the_matching_row(db):
     }
 
 
+def test_record_postings_stamps_open_status_and_verification_time(db):
+    db.insert_jobs([job(), job(job_url="https://x/2/")])
+    counts = db.record_postings([job(is_open=True), job(job_url="https://x/2/", is_open=False)])
+
+    assert counts == {"described": 0, "checked": 2, "closed": 1}
+    assert dict(rows(db, "job_url", "is_open")) == {"https://x/1/": 1, "https://x/2/": 0}
+    assert all(verified is not None for (verified,) in rows(db, "last_verified"))
+
+
+def test_record_postings_leaves_untouched_the_fields_a_job_did_not_carry(db):
+    """A failed fetch carries neither description nor open-status; it must overwrite neither."""
+    db.insert_jobs([job()])
+    db.record_postings([job(job_description="Build things.", is_open=True)])
+    db.record_postings([job()])  # both None
+
+    assert rows(db, "job_description", "is_open") == [("Build things.", 1)]
+
+
+def test_the_filtered_view_hides_closed_jobs_but_keeps_open_and_unchecked_ones(db):
+    db.insert_jobs([job(), job(job_url="https://x/2/"), job(job_url="https://x/3/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.record_postings([job(is_open=False), job(job_url="https://x/2/", is_open=True)])
+    with db.engine.begin() as conn:  # x/3 as a legacy row never checked
+        conn.execute(text("UPDATE jobs_raw SET is_open = NULL WHERE job_url = 'https://x/3/'"))
+
+    # x/1 closed -> hidden; x/2 open and x/3 unchecked (NULL) -> kept.
+    assert {u for (u,) in rows(db, "job_url", table="jobs_filtered")} == {"https://x/2/", "https://x/3/"}
+
+
+def test_postings_to_refresh_includes_relevant_rows_missing_a_description_at_any_age(db):
+    db.insert_jobs([job(date="2024-01-01"), job(title="Chef", job_url="https://x/2/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+
+    # The cutoff is well before the posting date, so only the missing-description branch can match.
+    assert [j.key for j in db.postings_to_refresh("2020-01-01 00:00:00")] == ["https://x/1/"]
+
+
+def test_postings_to_refresh_rechecks_an_aged_open_job_but_not_one_verified_recently(db):
+    db.insert_jobs([job(date="2024-01-01"), job(date="2024-01-01", job_url="https://x/2/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    with clock("2024-01-02 00:00:00"):  # x/1 last verified before the cutoff
+        db.record_postings([job(job_description="d", is_open=True)])
+    with clock("2024-01-10 00:00:00"):  # x/2 last verified after it
+        db.record_postings([job(job_url="https://x/2/", job_description="d", is_open=True)])
+
+    assert [j.key for j in db.postings_to_refresh("2024-01-08 00:00:00")] == ["https://x/1/"]
+
+
+def test_postings_to_refresh_leaves_a_still_fresh_posting_alone(db):
+    db.insert_jobs([job(date="2024-02-01")])  # posted after the cutoff
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    with clock("2024-02-02 00:00:00"):
+        db.record_postings([job(job_description="d", is_open=True)])
+
+    assert db.postings_to_refresh("2024-01-08 00:00:00") == []
+
+
+def test_postings_to_refresh_skips_a_job_already_closed(db):
+    db.insert_jobs([job(date="2024-01-01")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    with clock("2024-01-02 00:00:00"):
+        db.record_postings([job(job_description="d", is_open=False)])
+
+    assert db.postings_to_refresh("2024-01-08 00:00:00") == []
+
+
+def test_postings_to_refresh_ages_a_dateless_card_by_first_seen(db):
+    with clock("2024-01-01 00:00:00"):
+        db.insert_jobs([job(date="")])  # no posting date, so first_seen stands in for it
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    with clock("2024-01-02 00:00:00"):
+        db.record_postings([job(date="", job_description="d", is_open=True)])
+
+    assert [j.key for j in db.postings_to_refresh("2024-01-08 00:00:00")] == ["https://x/1/"]
+
+
 def test_relevant_jobs_without_description_keeps_only_relevant_rows_still_lacking_one(db):
     """NULL covers both a job never described and a fetch that failed; both stay on the worklist."""
     db.insert_jobs([job(), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
     db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
-    db.update_descriptions([job(job_url="https://x/2/", job_description="Build things.")])
+    db.record_postings([job(job_url="https://x/2/", job_description="Build things.")])
 
     assert [j.key for j in db.relevant_jobs_without_description()] == ["https://x/1/"]
 
@@ -196,7 +289,7 @@ def test_relevant_jobs_without_description_counts_the_not_found_placeholder_as_d
     the placeholder is what stops it being refetched on every future run."""
     db.insert_jobs([job()])
     db.refresh_relevance(lambda title, company, workplace, qids: True)
-    db.update_descriptions([job(job_description=NO_DESCRIPTION)])
+    db.record_postings([job(job_description=NO_DESCRIPTION)])
 
     assert db.relevant_jobs_without_description() == []
 
@@ -370,7 +463,7 @@ def test_last_run_before_any_run_is_none(db):
 def test_totals_counts_stored_relevant_and_still_undescribed(db):
     db.insert_jobs([job(), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
     db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
-    db.update_descriptions([job(job_description="Build things.")])
+    db.record_postings([job(job_description="Build things.")])
 
     assert db.totals() == {"stored": 3, "relevant": 2, "missing_descriptions": 1}
 

@@ -85,10 +85,10 @@ uv run linkedin-scraper scrape configs/other.yaml --max-pages 2 # another config
 
 | Command | What it does |
 | --- | --- |
-| `scrape [config] [--max-pages N]` | Scrape, filter, and store jobs, then fetch descriptions for the relevant ones. |
+| `scrape [config] [--max-pages N]` | Scrape, filter, and store jobs, then refresh the relevant ones — fetching descriptions and re-checking open-status. |
 | `init-config <path>` | Write a starter config from the sample. Refuses to overwrite an existing file. |
 | `recheck-relevance [config]` | Re-apply a config's filters to every stored job, flipping `is_relevant` — a filter edit's effect without waiting for the next scrape. |
-| `fetch-descriptions [config]` | Fetch descriptions for stored relevant jobs that still lack one, e.g. after a run was blocked before its describe phase. Uses the config's `http` settings only. |
+| `refresh [config] [--reverify-after-days N]` | Fetch missing descriptions and re-check open-status for stored relevant jobs due for it — those older than N days (default 7) and not verified since. Also fills descriptions a blocked run missed. Uses the config's `http` settings only. |
 | `status` | Print the last run — when, how it ended, its counts — and the stored-job totals. |
 
 `config` defaults to `configs/config.yaml`. `--max-pages` caps every query for a quick run; it only
@@ -126,9 +126,11 @@ Every run writes each job it scrapes to **`jobs_raw`** — raw in that it holds 
 | `runs_seen` | How many runs surfaced this job — one per run, however many searches found it. |
 | `is_relevant` | Whether the config's filters keep the job. `NULL` until first judged, then recomputed every run. |
 | `job_description` | `NULL` until the job passes the filters, then its full text — or `Could not find job description` when the page genuinely has none. |
+| `is_open` | Whether the posting still accepts applications, read from its page when refreshed. `NULL` until first checked; `0` once it closes. |
+| `last_verified` | When `is_open` was last checked; `NULL` until the first check. |
 
-Day to day, query the **`jobs_filtered`** view — `jobs_raw` with the rejected postings hidden. Reach
-for `jobs_raw` itself to audit the filters:
+Day to day, query the **`jobs_filtered`** view — `jobs_raw` with the rejected postings, and any that
+have since closed, hidden (a not-yet-checked job stays visible). Reach for `jobs_raw` itself to audit:
 
 ```sql
 -- what the filters keep
@@ -248,7 +250,7 @@ tests/                   pytest suite
 linkedin_scraper/
   __main__.py            the -m entry point; a shim over cli.py
   cli.py                 the CLI: the argument parser and the subcommands behind it
-  main.py                a scrape run end to end: scrape, dedupe, store, filter, describe
+  main.py                a scrape run end to end: scrape, dedupe, store, filter, refresh
   config.py              config schema, validation, loading (Pydantic)
   filters.py             transforms: workplace types and the relevance predicate
   job.py                 the Job record, frozen; shared by parsing, filters, and the store

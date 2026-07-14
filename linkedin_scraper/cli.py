@@ -4,18 +4,19 @@ import argparse
 import shutil
 import sys
 import tomllib
+from datetime import datetime, timedelta
 from pathlib import Path
 
 from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 
 from linkedin_scraper.config import ConfigurationError, load_config
-from linkedin_scraper.constants import CONFIG_PATH, CONFIGS_PATH, DB_PATH, MAX_PAGES, PROJECT_ROOT
+from linkedin_scraper.constants import CONFIG_PATH, CONFIGS_PATH, DB_PATH, MAX_PAGES, PROJECT_ROOT, REVERIFY_AFTER_DAYS
 from linkedin_scraper.filters import relevance_predicate
 from linkedin_scraper.logger import init_logging
 from linkedin_scraper.main import main as run_scrape
 from linkedin_scraper.net.http import HttpClient
-from linkedin_scraper.scrape.scraping import BlockedError, NoFilteringSessionError, describe_jobs
+from linkedin_scraper.scrape.scraping import BlockedError, NoFilteringSessionError, refresh_postings
 from linkedin_scraper.store.db import JobsDb
 
 SAMPLE_CONFIG = CONFIGS_PATH / "config.sample.yaml"
@@ -58,25 +59,29 @@ def recheck_relevance(config_file: str | Path) -> None:
     db.close()
 
 
-def fetch_descriptions(config_file: str | Path) -> None:
-    """Fetch descriptions for stored relevant jobs that still lack one."""
+def refresh(config_file: str | Path, reverify_after_days: int = REVERIFY_AFTER_DAYS) -> None:
+    """Fetch descriptions and re-check open-status for stored relevant jobs that are due."""
     init_logging()
     config = load_config(config_file)
     if not _has_db():
         return
     db = JobsDb(path=str(DB_PATH))
     db.create_schema()
-    jobs = db.relevant_jobs_without_description()
+    cutoff = (datetime.now() - timedelta(days=reverify_after_days)).isoformat(sep=" ", timespec="seconds")
+    jobs = db.postings_to_refresh(cutoff)
     if not jobs:
-        logger.info("Every relevant stored job already has a description")
+        logger.info("No stored jobs are due for a refresh")
         db.close()
         return
 
     client = HttpClient.from_config(config.http)
-    filled = describe_jobs(jobs, client, config.http.description_workers, db.update_descriptions)
+    counts = refresh_postings(jobs, client, config.http.description_workers, db.record_postings)
     client.close()
     db.close()
-    logger.success(f"Filled {filled} descriptions")
+    logger.success(
+        f"Filled {counts['described']} descriptions, verified {counts['checked']} postings "
+        f"({counts['closed']} now closed)"
+    )
 
 
 def status() -> None:
@@ -129,8 +134,14 @@ def build_parser() -> argparse.ArgumentParser:
     recheck = sub.add_parser("recheck-relevance", help="re-apply a config's filters to stored jobs")
     recheck.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config whose filters to apply")
 
-    fetch = sub.add_parser("fetch-descriptions", help="fetch missing descriptions for stored jobs")
-    fetch.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config providing HTTP settings")
+    refresh_cmd = sub.add_parser("refresh", help="fetch missing descriptions and re-check open-status for stored jobs")
+    refresh_cmd.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config providing HTTP settings")
+    refresh_cmd.add_argument(
+        "--reverify-after-days",
+        type=int,
+        default=REVERIFY_AFTER_DAYS,
+        help=f"re-check a posting's open-status once it is older than this (default: {REVERIFY_AFTER_DAYS})",
+    )
 
     sub.add_parser("status", help="show the last run and stored-job totals")
 
@@ -147,8 +158,8 @@ def main() -> None:
             init_config(args.path)
         elif args.command == "recheck-relevance":
             recheck_relevance(args.config)
-        elif args.command == "fetch-descriptions":
-            fetch_descriptions(args.config)
+        elif args.command == "refresh":
+            refresh(args.config, args.reverify_after_days)
         elif args.command == "status":
             status()
     # A cron job has nothing but the exit status to go on: 1 config/DB error, 2 usage, 3 blocked,

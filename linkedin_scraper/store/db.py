@@ -218,8 +218,8 @@ class JobsDb:
 
         flipped = to_relevant + to_irrelevant
         logger.info(
-            f"Relevance refresh: {flipped:,} verdicts flipped "
-            f"({to_relevant:,} now relevant, {to_irrelevant:,} now irrelevant) in {TABLE_JOBS_RAW}"
+            f"Re-judged all stored jobs against current config: {flipped:,} verdicts flipped "
+            f"({to_relevant:,} now relevant, {to_irrelevant:,} now irrelevant)"
         )
         return flipped
 

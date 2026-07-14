@@ -16,7 +16,7 @@ from linkedin_scraper.filters import relevance_predicate
 from linkedin_scraper.logger import init_logging
 from linkedin_scraper.main import main as run_scrape
 from linkedin_scraper.net.http import HttpClient
-from linkedin_scraper.scrape.scraping import BlockedError, NoFilteringSessionError, refresh_postings
+from linkedin_scraper.scrape.scraping import BlockedError, NoFilteringSessionError, fetch_postings
 from linkedin_scraper.store.db import JobsDb
 
 SAMPLE_CONFIG = CONFIGS_PATH / "config.sample.yaml"
@@ -75,7 +75,7 @@ def refresh(config_file: str | Path, recheck_days: int = RECHECK_DAYS) -> None:
         return
 
     client = HttpClient.from_config(config.http)
-    counts = refresh_postings(jobs, client, config.http.description_workers, db.record_postings)
+    counts = fetch_postings(jobs, client, config.http.description_workers, db.record_postings)
     client.close()
     db.close()
     logger.success(

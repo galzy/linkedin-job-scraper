@@ -184,9 +184,9 @@ def fetch_posting(job: Job, client: HttpClient) -> Job:
     return job.with_posting(parse_job_description(result.soup), parse_job_open(result.soup))
 
 
-def refresh_postings(jobs: list[Job], client: HttpClient, workers: int, store: Callable[[list[Job]], dict]) -> dict:
+def fetch_postings(jobs: list[Job], client: HttpClient, workers: int, store: Callable[[list[Job]], dict]) -> dict:
     """Fetch the postings in parallel, storing each one's description and open-status; returns the store's counts."""
-    logger.info(f"Refreshing {len(jobs):,} postings with {workers} workers")
+    logger.info(f"Fetching {len(jobs):,} postings with {workers} workers")
     with ThreadPoolExecutor(max_workers=workers) as executor:
         fetched = list(executor.map(lambda job: fetch_posting(job, client), jobs))
 

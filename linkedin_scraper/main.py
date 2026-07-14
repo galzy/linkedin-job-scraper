@@ -14,7 +14,7 @@ from linkedin_scraper.scrape.scraping import (
     BlockedError,
     NoFilteringSessionError,
     acquire_filtering_session,
-    refresh_postings,
+    fetch_postings,
     scrape_jobs,
 )
 from linkedin_scraper.store.db import JobsDb
@@ -88,14 +88,14 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
     logger.info(f"Relevant: {relevant:,} of {len(jobs_deduped):,} jobs")
 
     if blocked is not None:
-        logger.warning("Not refreshing postings while blocked; next run picks up the missing ones")
+        logger.warning("Not fetching postings while blocked; next run picks up the missing ones")
     else:
         # From the DB, not this run's scrape, so refreshed verdicts and strays from past runs count too:
         # jobs still lacking a description, plus open ones old enough to be re-checked for closure.
         cutoff = (datetime.now() - timedelta(days=RECHECK_DAYS)).isoformat(sep=" ", timespec="seconds")
         to_refresh = db.postings_to_refresh(cutoff)
         if to_refresh:
-            refresh_postings(to_refresh, client, config.http.description_workers, db.record_postings)
+            fetch_postings(to_refresh, client, config.http.description_workers, db.record_postings)
         else:
             logger.info("No stored jobs are due for a refresh")
 

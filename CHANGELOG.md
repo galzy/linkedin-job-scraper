@@ -20,7 +20,7 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
   just surfaced in search — with `last_verified` left `NULL` so a later fetch still settles it; the upsert
   never touches `is_open`, so a verified verdict outlives a later sighting. It costs no extra requests —
   the description fetch already loads that page, so one fetch now yields both (`fetch_description` →
-  `fetch_posting`, `describe_jobs` → `refresh_postings`, storing via `record_postings`). The
+  `fetch_posting`, `describe_jobs` → `fetch_postings`, storing via `record_postings`). The
   `jobs_filtered` view hides confirmed-closed jobs (`is_open IS NOT 0`), keeping the not-yet-checked ones.
   `fetch-descriptions` is now `refresh`: it fetches missing descriptions and re-checks open-status for
   relevant jobs due for it — older than `--recheck-days` (default 7, by posting date, or
@@ -149,7 +149,7 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
   list was judged before `refresh_relevance` re-judged the table, so the two could disagree, and a row
   left undescribed by a blocked run or a failed fetch was retried only when a later search surfaced it
   again; now every stray is picked up on the next run. `main` and the `refresh` command share one
-  fetch-and-store step (`refresh_postings`), and `JobsDb.described_keys` is gone, subsumed by the
+  fetch-and-store step (`fetch_postings`), and `JobsDb.described_keys` is gone, subsumed by the
   worklist query.
 - HTTP 403 and LinkedIn's 999 authwall are retried like a 429 rather than treated as a verdict on
   the request. All three are temporary — the guest endpoint serves them to a caller it has soured

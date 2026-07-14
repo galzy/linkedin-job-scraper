@@ -87,6 +87,10 @@ _STAGING_UPSERT = _upsert(
     assign=lambda excluded: {"times_seen": StagingRow.times_seen + excluded.times_seen},
 )
 
+# The columns that rebuild a Job to (re)fetch: its identity and card labels, not the job_description
+# or is_open that a fetch is about to replace.
+_JOB_FETCH_COLS = (JobRow.title, JobRow.company, JobRow.date, JobRow.job_url, JobRow.location, JobRow.workplace_type)
+
 
 class JobsDb:
     """The jobs database: the jobs themselves plus the queries, attribution, and runs behind them."""
@@ -111,10 +115,9 @@ class JobsDb:
 
     def relevant_jobs_without_description(self) -> list[Job]:
         """Stored relevant jobs whose description is still NULL, as Jobs ready to fetch."""
-        cols = (JobRow.title, JobRow.company, JobRow.date, JobRow.job_url, JobRow.location, JobRow.workplace_type)
         with self.engine.connect() as conn:
             rows = conn.execute(
-                select(*cols).where(JobRow.is_relevant.is_(True), JobRow.job_description.is_(None))
+                select(*_JOB_FETCH_COLS).where(JobRow.is_relevant.is_(True), JobRow.job_description.is_(None))
             ).all()
         return [Job(**row._asdict()) for row in rows]
 
@@ -360,21 +363,24 @@ class JobsDb:
         return {"described": filled, "checked": len(verified), "closed": closed}
 
     def postings_to_refresh(self, stale_before: str) -> list[Job]:
-        """Relevant jobs to (re)fetch: those missing a description, plus open ones due to be re-checked.
+        """Relevant, not-closed jobs to (re)fetch: those missing a description, plus ones due to be re-checked.
 
-        A job is due when it is not already closed, first posted before ``stale_before`` (its posting
-        date, or first_seen when the card carried none), and last verified before it too — or never.
+        A job is due when first posted before ``stale_before`` (its posting date, or first_seen when the
+        card carried none) and last verified before it too — or never. A confirmed-closed posting is left
+        be, even one still missing a description: a removed listing keeps 404ing, so re-fetching is futile.
         """
-        cols = (JobRow.title, JobRow.company, JobRow.date, JobRow.job_url, JobRow.location, JobRow.workplace_type)
         age = func.coalesce(func.nullif(JobRow.date, ""), JobRow.first_seen)
         due = and_(
-            JobRow.is_open.isnot(False),  # skip only the confirmed-closed; NULL and open both qualify
             age < stale_before,
             or_(JobRow.last_verified.is_(None), JobRow.last_verified < stale_before),
         )
         with self.engine.connect() as conn:
             rows = conn.execute(
-                select(*cols).where(JobRow.is_relevant.is_(True), or_(JobRow.job_description.is_(None), due))
+                select(*_JOB_FETCH_COLS).where(
+                    JobRow.is_relevant.is_(True),
+                    JobRow.is_open.isnot(False),  # never re-fetch a confirmed-closed posting; NULL and open qualify
+                    or_(JobRow.job_description.is_(None), due),
+                )
             ).all()
         return [Job(**row._asdict()) for row in rows]
 

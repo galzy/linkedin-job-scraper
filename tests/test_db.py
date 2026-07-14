@@ -265,6 +265,15 @@ def test_postings_to_refresh_skips_a_job_already_closed(db):
     assert db.postings_to_refresh("2024-01-08 00:00:00") == []
 
 
+def test_postings_to_refresh_skips_a_closed_job_still_missing_a_description(db):
+    """A gone posting (404) is closed with its description never fetched; re-fetching only 404s again."""
+    db.insert_jobs([job(date="2024-01-01")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.record_postings([job(is_open=False)])  # closed, job_description still NULL
+
+    assert db.postings_to_refresh("2024-01-08 00:00:00") == []
+
+
 def test_postings_to_refresh_ages_a_dateless_card_by_first_seen(db):
     with clock("2024-01-01 00:00:00"):
         db.insert_jobs([job(date="")])  # no posting date, so first_seen stands in for it

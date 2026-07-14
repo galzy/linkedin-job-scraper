@@ -3,8 +3,8 @@ from collections.abc import Callable, Collection
 from datetime import datetime
 
 from loguru import logger
-from sqlalchemy import Row, bindparam, case, create_engine, delete, func, select, text, update
-from sqlalchemy.dialects.sqlite import insert
+from sqlalchemy import Connection, Row, bindparam, case, create_engine, delete, func, select, text, update
+from sqlalchemy.dialects.sqlite import Insert, insert
 
 from linkedin_scraper.config import SearchQuery
 from linkedin_scraper.constants import (
@@ -32,44 +32,55 @@ def _row(job: Job, seen_at: str, countries: frozenset[str]) -> dict:
     return job.model_dump() | {"country": country_of(job.location, countries)} | stamps
 
 
+def _update_jobs_by_url(conn: Connection, column: str, updates: list[dict]) -> int:
+    """Apply many ``{"url", "value"}`` updates to one jobs_raw column, matched by job_url; returns rows changed."""
+    result = conn.execute(
+        update(JobRow).where(JobRow.job_url == bindparam("url")).values(**{column: bindparam("value")}),
+        updates,
+    )
+    return result.rowcount
+
+
+def _upsert(row, on, assign) -> Insert:
+    """INSERT for ``row``; on a key conflict over ``on``, update the existing row with ``assign(excluded)``."""
+    stmt = insert(row)
+    return stmt.on_conflict_do_update(index_elements=on, set_=assign(stmt.excluded))
+
+
 # A re-scraped job updates these and nothing else: first_seen stays first, and job_description
 # survives rather than being refetched next run.
-_insert = insert(JobRow)
-_UPSERT = _insert.on_conflict_do_update(
-    index_elements=[JobRow.job_url],
-    set_={
+_JOB_UPSERT = _upsert(
+    JobRow,
+    on=[JobRow.job_url],
+    assign=lambda excluded: {
         "runs_seen": JobRow.runs_seen + 1,
-        "last_seen": _insert.excluded.last_seen,
+        "last_seen": excluded.last_seen,
         # Refresh the type, but never downgrade a known one to untagged when this run missed it.
         "workplace_type": case(
-            (_insert.excluded.workplace_type == "untagged", JobRow.workplace_type),
-            else_=_insert.excluded.workplace_type,
+            (excluded.workplace_type == "untagged", JobRow.workplace_type),
+            else_=excluded.workplace_type,
         ),
     },
 )
 
 # A query seen again keeps its first_used and just advances last_used.
-_query_insert = insert(QueryRow)
-_QUERY_UPSERT = _query_insert.on_conflict_do_update(
-    index_elements=[QueryRow.query_id],
-    set_={"last_used": _query_insert.excluded.last_used},
-)
+_QUERY_UPSERT = _upsert(QueryRow, on=[QueryRow.query_id], assign=lambda excluded: {"last_used": excluded.last_used})
 
 # An attribution seen again accumulates its sightings and advances last_seen.
-_job_query_insert = insert(JobQueryRow)
-_JOB_QUERY_UPSERT = _job_query_insert.on_conflict_do_update(
-    index_elements=[JobQueryRow.job_url, JobQueryRow.query_id],
-    set_={
-        "times_seen": JobQueryRow.times_seen + _job_query_insert.excluded.times_seen,
-        "last_seen": _job_query_insert.excluded.last_seen,
+_JOB_QUERY_UPSERT = _upsert(
+    JobQueryRow,
+    on=[JobQueryRow.job_url, JobQueryRow.query_id],
+    assign=lambda excluded: {
+        "times_seen": JobQueryRow.times_seen + excluded.times_seen,
+        "last_seen": excluded.last_seen,
     },
 )
 
 # A posting re-staged under the same query accumulates its card count.
-_staging_insert = insert(StagingRow)
-_STAGING_UPSERT = _staging_insert.on_conflict_do_update(
-    index_elements=[StagingRow.job_url, StagingRow.query_id],
-    set_={"times_seen": StagingRow.times_seen + _staging_insert.excluded.times_seen},
+_STAGING_UPSERT = _upsert(
+    StagingRow,
+    on=[StagingRow.job_url, StagingRow.query_id],
+    assign=lambda excluded: {"times_seen": StagingRow.times_seen + excluded.times_seen},
 )
 
 
@@ -137,10 +148,11 @@ class JobsDb:
         if not jobs:
             return
         seen_at = datetime.now().isoformat(sep=" ", timespec="seconds")
-        counts = Counter(job.job_url for job in jobs)
+        counts: Counter[str] = Counter()
         cards: dict[str, Job] = {}
         for job in jobs:
             cards.setdefault(job.job_url, job)  # first card wins, as the in-memory dedupe did
+            counts[job.job_url] += 1
         staged = [
             {
                 "job_url": url,
@@ -185,7 +197,7 @@ class JobsDb:
         with self.engine.begin() as conn:
             # An upserted row is updated, not skipped, so rowcount counts it too.
             before = conn.scalar(select(func.count()).select_from(JobRow))
-            conn.execute(_UPSERT, rows)
+            conn.execute(_JOB_UPSERT, rows)
             added = conn.scalar(select(func.count()).select_from(JobRow)) - before
 
         logger.info(f"Added {added:,} of {len(jobs):,} scraped jobs to {TABLE_JOBS_RAW}")
@@ -213,17 +225,14 @@ class JobsDb:
                 verdict = predicate(row.title, row.company, row.workplace_type, links.get(row.job_url, set()))
                 if verdict == row.is_relevant:
                     continue
-                updates.append({"url": row.job_url, "verdict": verdict})
+                updates.append({"url": row.job_url, "value": verdict})
                 if row.is_relevant is not None:  # a reversal, not a first judgment
                     if verdict:
                         to_relevant += 1
                     else:
                         to_irrelevant += 1
             if updates:
-                conn.execute(
-                    update(JobRow).where(JobRow.job_url == bindparam("url")).values(is_relevant=bindparam("verdict")),
-                    updates,
-                )
+                _update_jobs_by_url(conn, "is_relevant", updates)
 
         flipped = to_relevant + to_irrelevant
         logger.info(
@@ -247,15 +256,12 @@ class JobsDb:
                 if (country := by_query.get(query_id)) is not None:
                     by_job[job_url].add(country)
             updates = [
-                {"url": job_url, "country": next(iter(named))}
+                {"url": job_url, "value": next(iter(named))}
                 for (job_url,) in conn.execute(select(JobRow.job_url).where(JobRow.country.is_(None)))
                 if len(named := by_job.get(job_url, set())) == 1
             ]
             if updates:
-                conn.execute(
-                    update(JobRow).where(JobRow.job_url == bindparam("url")).values(country=bindparam("country")),
-                    updates,
-                )
+                _update_jobs_by_url(conn, "country", updates)
 
         return len(updates)
 
@@ -332,13 +338,9 @@ class JobsDb:
             return 0
 
         with self.engine.begin() as conn:
-            result = conn.execute(
-                update(JobRow)
-                .where(JobRow.job_url == bindparam("url"))
-                .values(job_description=bindparam("description")),
-                [{"url": job.key, "description": job.job_description} for job in jobs],
+            updated = _update_jobs_by_url(
+                conn, "job_description", [{"url": job.key, "value": job.job_description} for job in jobs]
             )
-            updated = result.rowcount
 
         return updated
 

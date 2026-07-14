@@ -153,7 +153,7 @@ used; `run_queries` ties a run to its queries.
 
 ```sql
 -- which searches surfaced a given job
-SELECT q.label FROM queries q JOIN job_queries jq USING(query_id) WHERE jq.job_url = '...';
+SELECT q.keywords, q.location, q.harvest_type FROM queries q JOIN job_queries jq USING(query_id) WHERE jq.job_url = '...';
 -- the config a run actually ran with
 SELECT config_yaml FROM runs WHERE run_id = 1;
 ```

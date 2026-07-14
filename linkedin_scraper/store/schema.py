@@ -55,7 +55,6 @@ class QueryRow(SqlBase):
     distance: Mapped[str]
     harvest_type: Mapped[str]
     timespan: Mapped[str]
-    label: Mapped[str]
     first_used: Mapped[str]
     last_used: Mapped[str]
 

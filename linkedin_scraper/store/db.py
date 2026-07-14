@@ -258,7 +258,6 @@ class JobsDb:
                 "distance": q.distance,
                 "harvest_type": q.harvest_type,
                 "timespan": q.timespan,
-                "label": q.label,
                 "first_used": run_ts,
                 "last_used": run_ts,
             }

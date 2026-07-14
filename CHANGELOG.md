@@ -292,6 +292,10 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
   `main` spelled each name a third time.
 
 ### Removed
+- The `label` column on `queries`. It stored a human-readable rendering of each query, but every
+  field it was built from already sits in the same row, so it duplicated data; the `SearchQuery.label`
+  property still exists for log lines. It was dropped from the existing database by a one-off
+  `ALTER TABLE`; new databases never get it.
 - `scrape_jobs`'s `tagged=False` fallback, which scraped only the catch-all variants when no
   filtering session was drawn — and the catch-all harvest variant it depended on. The fallback
   harvested every job under a fabricated workplace label; a run with no filtering session now aborts

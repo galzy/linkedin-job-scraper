@@ -360,7 +360,7 @@ class JobsDb:
         return {"described": filled, "checked": len(verified), "closed": closed}
 
     def postings_to_refresh(self, stale_before: str) -> list[Job]:
-        """Relevant jobs to (re)fetch: those missing a description, plus open ones due for reverification.
+        """Relevant jobs to (re)fetch: those missing a description, plus open ones due to be re-checked.
 
         A job is due when it is not already closed, first posted before ``stale_before`` (its posting
         date, or first_seen when the card carried none), and last verified before it too — or never.

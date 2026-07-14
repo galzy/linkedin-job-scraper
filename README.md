@@ -88,7 +88,7 @@ uv run linkedin-scraper scrape configs/other.yaml --max-pages 2 # another config
 | `scrape [config] [--max-pages N]` | Scrape, filter, and store jobs, then refresh the relevant ones — fetching descriptions and re-checking open-status. |
 | `init-config <path>` | Write a starter config from the sample. Refuses to overwrite an existing file. |
 | `recheck-relevance [config]` | Re-apply a config's filters to every stored job, flipping `is_relevant` — a filter edit's effect without waiting for the next scrape. |
-| `refresh [config] [--reverify-after-days N]` | Fetch missing descriptions and re-check open-status for stored relevant jobs due for it — those older than N days (default 7) and not verified since. Also fills descriptions a blocked run missed. Uses the config's `http` settings only. |
+| `refresh [config] [--recheck-days N]` | Fetch missing descriptions and re-check open-status for stored relevant jobs due for it — those older than N days (default 7) and not verified since. Also fills descriptions a blocked run missed. Uses the config's `http` settings only. |
 | `status` | Print the last run — when, how it ended, its counts — and the stored-job totals. |
 
 `config` defaults to `configs/config.yaml`. `--max-pages` caps every query for a quick run; it only

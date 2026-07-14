@@ -11,7 +11,7 @@ from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 
 from linkedin_scraper.config import ConfigurationError, load_config
-from linkedin_scraper.constants import CONFIG_PATH, CONFIGS_PATH, DB_PATH, MAX_PAGES, PROJECT_ROOT, REVERIFY_AFTER_DAYS
+from linkedin_scraper.constants import CONFIG_PATH, CONFIGS_PATH, DB_PATH, MAX_PAGES, PROJECT_ROOT, RECHECK_DAYS
 from linkedin_scraper.filters import relevance_predicate
 from linkedin_scraper.logger import init_logging
 from linkedin_scraper.main import main as run_scrape
@@ -59,7 +59,7 @@ def recheck_relevance(config_file: str | Path) -> None:
     db.close()
 
 
-def refresh(config_file: str | Path, reverify_after_days: int = REVERIFY_AFTER_DAYS) -> None:
+def refresh(config_file: str | Path, recheck_days: int = RECHECK_DAYS) -> None:
     """Fetch descriptions and re-check open-status for stored relevant jobs that are due."""
     init_logging()
     config = load_config(config_file)
@@ -67,7 +67,7 @@ def refresh(config_file: str | Path, reverify_after_days: int = REVERIFY_AFTER_D
         return
     db = JobsDb(path=str(DB_PATH))
     db.create_schema()
-    cutoff = (datetime.now() - timedelta(days=reverify_after_days)).isoformat(sep=" ", timespec="seconds")
+    cutoff = (datetime.now() - timedelta(days=recheck_days)).isoformat(sep=" ", timespec="seconds")
     jobs = db.postings_to_refresh(cutoff)
     if not jobs:
         logger.info("No stored jobs are due for a refresh")
@@ -137,10 +137,10 @@ def build_parser() -> argparse.ArgumentParser:
     refresh_cmd = sub.add_parser("refresh", help="fetch missing descriptions and re-check open-status for stored jobs")
     refresh_cmd.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config providing HTTP settings")
     refresh_cmd.add_argument(
-        "--reverify-after-days",
+        "--recheck-days",
         type=int,
-        default=REVERIFY_AFTER_DAYS,
-        help=f"re-check a posting's open-status once it is older than this (default: {REVERIFY_AFTER_DAYS})",
+        default=RECHECK_DAYS,
+        help=f"re-check a posting's open-status once it is older than this many days (default: {RECHECK_DAYS})",
     )
 
     sub.add_parser("status", help="show the last run and stored-job totals")
@@ -159,7 +159,7 @@ def main() -> None:
         elif args.command == "recheck-relevance":
             recheck_relevance(args.config)
         elif args.command == "refresh":
-            refresh(args.config, args.reverify_after_days)
+            refresh(args.config, args.recheck_days)
         elif args.command == "status":
             status()
     # A cron job has nothing but the exit status to go on: 1 config/DB error, 2 usage, 3 blocked,

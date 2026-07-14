@@ -7,16 +7,19 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
 ### Added
 - Job open-status. `is_open` and `last_verified` on `jobs_raw` record whether a posting still accepts
   applications, read from the guest posting page: a closed listing swaps its apply button for a
-  `figure.closed-job` "No longer accepting applications" banner, which `parse_job_open` keys on. `NULL`
-  until first checked; a failed fetch or 404 leaves it unchanged for a retry rather than guessing closed.
-  It costs no extra requests — the description fetch already loads that page, so one fetch now yields both
-  (`fetch_description` → `fetch_posting`, `describe_jobs` → `refresh_postings`, storing via
-  `record_postings`). The `jobs_filtered` view hides confirmed-closed jobs (`is_open IS NOT 0`), keeping
-  the not-yet-checked ones. `fetch-descriptions` is now `refresh`: it fetches missing descriptions and
-  re-checks open-status for relevant jobs due for it — older than `--reverify-after-days` (default 7,
-  by posting date, or `first_seen` when the card had none) and not verified since — so a fresh posting is
-  left alone and a checked one isn't hammered. A scrape run refreshes the same worklist. (The two columns
-  were added to existing databases by a one-off `ALTER TABLE`; new databases get them from the model.)
+  `figure.closed-job` "No longer accepting applications" banner, which `parse_job_open` keys on. A removed
+  posting (a `404`/`410`, surfaced by the new `HttpClient.fetch` as `gone`) is recorded closed too; any
+  other failed fetch leaves the row unchanged for a retry. A freshly scraped job is presumed open — it
+  just surfaced in search — with `last_verified` left `NULL` so a later fetch still settles it; the upsert
+  never touches `is_open`, so a verified verdict outlives a later sighting. It costs no extra requests —
+  the description fetch already loads that page, so one fetch now yields both (`fetch_description` →
+  `fetch_posting`, `describe_jobs` → `refresh_postings`, storing via `record_postings`). The
+  `jobs_filtered` view hides confirmed-closed jobs (`is_open IS NOT 0`), keeping the not-yet-checked ones.
+  `fetch-descriptions` is now `refresh`: it fetches missing descriptions and re-checks open-status for
+  relevant jobs due for it — older than `--recheck-days` (default 7, by posting date, or
+  `first_seen` when the card had none) and not verified since — so a fresh posting is left alone and a
+  checked one isn't hammered. A scrape run refreshes the same worklist. (The two columns were added to
+  existing databases by a one-off `ALTER TABLE`; new databases get them from the model.)
 - Crash durability for the scrape. Each query's cards are flushed to a `scrape_staging` table the moment
   the query finishes, and the end-of-run pipeline reads the run back from it. A crash mid-scrape now leaves
   the finished queries' jobs on disk instead of losing the whole run; the table is wiped at each run's start.

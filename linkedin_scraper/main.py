@@ -5,7 +5,7 @@ from pathlib import Path
 from loguru import logger
 
 from linkedin_scraper.config import WorkplaceType, load_config
-from linkedin_scraper.constants import CONFIG_PATH, DB_PATH, MAX_PAGES, REVERIFY_AFTER_DAYS
+from linkedin_scraper.constants import CONFIG_PATH, DB_PATH, MAX_PAGES, RECHECK_DAYS
 from linkedin_scraper.filters import derive_workplace_types, relevance_predicate
 from linkedin_scraper.geo import searched_countries
 from linkedin_scraper.logger import init_logging
@@ -92,7 +92,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
     else:
         # From the DB, not this run's scrape, so refreshed verdicts and strays from past runs count too:
         # jobs still lacking a description, plus open ones old enough to be re-checked for closure.
-        cutoff = (datetime.now() - timedelta(days=REVERIFY_AFTER_DAYS)).isoformat(sep=" ", timespec="seconds")
+        cutoff = (datetime.now() - timedelta(days=RECHECK_DAYS)).isoformat(sep=" ", timespec="seconds")
         to_refresh = db.postings_to_refresh(cutoff)
         if to_refresh:
             refresh_postings(to_refresh, client, config.http.description_workers, db.record_postings)

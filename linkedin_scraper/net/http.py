@@ -3,6 +3,7 @@
 import random
 import threading
 import time
+from typing import NamedTuple
 
 import requests
 from bs4 import BeautifulSoup
@@ -21,8 +22,17 @@ class Throttled(RequestException):
     """
 
 
+class Fetch(NamedTuple):
+    """A fetch's outcome: the parsed page, or None with ``gone`` telling a removed resource from a miss."""
+
+    soup: BeautifulSoup | None
+    gone: bool = False  # True only on a definitive 404/410: the posting is removed, not a transient failure
+
+
 # All three are temporary and lift on their own; 999 is the guest authwall, 403 its stand-in under load.
 THROTTLE_STATUSES = frozenset({403, 429, 999})
+# A removed resource, not a hiccup: no retry, and callers can tell it apart from a failed fetch.
+GONE_STATUSES = frozenset({404, 410})
 
 
 class RateLimiter:
@@ -135,8 +145,9 @@ class HttpClient:
     def close(self) -> None:
         self._session.close()
 
-    def get(self, url: str) -> BeautifulSoup | None:
-        """Fetch and soup a page, retrying with backoff and giving up with None."""
+    def fetch(self, url: str) -> Fetch:
+        """Fetch and soup a page, retrying with backoff. The result's ``soup`` is None when it gave up;
+        ``gone`` distinguishes a removed resource (404/410) from a transient miss, for callers that care."""
         for attempt in range(1, self._retries + 1):
             self._limiter.acquire()
             try:
@@ -144,12 +155,15 @@ class HttpClient:
                 if response.status_code in THROTTLE_STATUSES:
                     self._handle_throttle(response)
                     raise Throttled(str(response.status_code))
+                if response.status_code in GONE_STATUSES:
+                    logger.warning(f"HTTP {response.status_code} (gone), not retrying: {url}")
+                    return Fetch(None, gone=True)
                 if 400 <= response.status_code < 500:
                     # Every remaining 4xx is a verdict on the request, not a hiccup.
                     logger.warning(f"HTTP {response.status_code}, not retrying: {url}")
-                    return None
+                    return Fetch(None)
                 response.raise_for_status()
-                return BeautifulSoup(response.content, "html.parser")
+                return Fetch(BeautifulSoup(response.content, "html.parser"))
             except Throttled as e:
                 # Backoff already served inside _handle_throttle; go straight to retry.
                 logger.debug(f"HTTP {e}: retry {attempt}/{self._retries} — {url}")
@@ -164,7 +178,7 @@ class HttpClient:
                 time.sleep(backoff)
 
         logger.warning(f"Couldn't scrape page after {self._retries} attempts: {url}")
-        return None
+        return Fetch(None)
 
     def _backoff(self, attempt: int) -> float:
         """Exponential backoff capped at ``backoff_max``, plus anti-fingerprint jitter."""

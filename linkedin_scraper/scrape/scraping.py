@@ -51,7 +51,7 @@ def scrape_query(query: SearchQuery, client: HttpClient, tag: str, max_pages: in
     jobs: list[Job] = []
     for page in range(max_pages):
         for _ in range(3):
-            soup = client.get(query.page_url(page))
+            soup = client.fetch(query.page_url(page)).soup
             if soup is None:
                 logger.warning(f"[{tag}] page {page + 1} failed; stopping early with {len(jobs):,} jobs")
                 return QueryResult(jobs, QueryOutcome.FAILED)
@@ -146,7 +146,7 @@ def _session_filters(query: SearchQuery, client: HttpClient) -> bool | None:
     None (unanswerable) when either page fails or has no cards, e.g. mid-block or a dry query.
     """
     variants = (WorkplaceType.REMOTE, WorkplaceType.UNTAGGED)
-    pages = [client.get(query.model_copy(update={"harvest_type": t.value}).page_url(0)) for t in variants]
+    pages = [client.fetch(query.model_copy(update={"harvest_type": t.value}).page_url(0)).soup for t in variants]
     if any(page is None or not has_job_cards(page) for page in pages):
         return None
     remote_ids, untagged_ids = ([job.job_url for job in parse_page_jobs(page)] for page in pages)
@@ -160,7 +160,7 @@ def _channel_open(config: Config, client: HttpClient) -> bool:
     cards mean the channel is open and the callers' empty pages are real; empty means blocked.
     """
     canary = config.search_queries[0].broadened()
-    soup = client.get(canary.page_url(0))
+    soup = client.fetch(canary.page_url(0)).soup
     is_open = soup is not None and has_job_cards(soup)
     verdict = "results, channel open" if is_open else "empty, blocked"
     logger.info(f"Canary [{canary.label}]: {verdict}")
@@ -170,14 +170,18 @@ def _channel_open(config: Config, client: HttpClient) -> bool:
 def fetch_posting(job: Job, client: HttpClient) -> Job:
     """A copy of ``job`` carrying its description and open-status from one fetch of the posting page.
 
-    Both stay None if the fetch failed, which marks the row for a retry next run; the not-found
-    description placeholder would look like an answer.
+    A removed posting (the fetch is ``gone``) is recorded closed. Any other failed fetch leaves both
+    None, marking the row for a retry next run; the not-found description placeholder would look like
+    an answer.
     """
-    soup = client.get(job.description_url)
-    if soup is None:
+    result = client.fetch(job.description_url)
+    if result.gone:
+        logger.debug(f"Posting gone, marking closed: {job.title} @ {job.company}")
+        return job.with_posting(description=None, is_open=False)
+    if result.soup is None:
         return job.with_posting(description=None, is_open=None)
     logger.debug(f"Scraped posting: {job.title} @ {job.company}")
-    return job.with_posting(parse_job_description(soup), parse_job_open(soup))
+    return job.with_posting(parse_job_description(result.soup), parse_job_open(result.soup))
 
 
 def refresh_postings(jobs: list[Job], client: HttpClient, workers: int, store: Callable[[list[Job]], dict]) -> dict:
@@ -186,8 +190,8 @@ def refresh_postings(jobs: list[Job], client: HttpClient, workers: int, store: C
     with ThreadPoolExecutor(max_workers=workers) as executor:
         fetched = list(executor.map(lambda job: fetch_posting(job, client), jobs))
 
-    failed = sum(job.job_description is None for job in fetched)
+    failed = sum(job.job_description is None and job.is_open is None for job in fetched)
     if failed:
-        # Left NULL on purpose, so the next run picks them up again.
+        # A transient miss leaves both NULL and is retried next run; a gone posting is closed, not failed.
         logger.warning(f"{failed:,} postings failed; will retry next run")
     return store(fetched)

@@ -8,6 +8,7 @@ from pydantic import ValidationError
 from linkedin_scraper.config import Config, SearchQuery
 from linkedin_scraper.constants import MAX_PAGES, NO_DESCRIPTION, PAGE_SIZE
 from linkedin_scraper.job import Job
+from linkedin_scraper.net.http import Fetch
 from linkedin_scraper.scrape.parsing import parse_page_jobs
 from linkedin_scraper.scrape.scraping import (
     BlockedError,
@@ -39,17 +40,22 @@ EMPTY_PAGE = "<html><head></head><body></body></html>"
 MALFORMED_PAGE = '<li><div><div class="base-search-card__info"><span>nothing useful</span></div></div></li>'
 
 
-class StubClient:
-    """Serves a scripted page per request. A `None` entry stands for a fetch that failed."""
+GONE = object()  # a scripted page entry standing for a removed posting (404/410)
 
-    def __init__(self, pages: list[str | None]):
+
+class StubClient:
+    """Serves a scripted page per request. `None` stands for a failed fetch, `GONE` for a removed one."""
+
+    def __init__(self, pages: list):
         self._pages = pages
         self.urls: list[str] = []
 
-    def get(self, url: str) -> BeautifulSoup | None:
+    def fetch(self, url: str) -> Fetch:
         page = self._pages[len(self.urls)]
         self.urls.append(url)
-        return None if page is None else BeautifulSoup(page, "html.parser")
+        if page is GONE:
+            return Fetch(None, gone=True)
+        return Fetch(None if page is None else BeautifulSoup(page, "html.parser"))
 
 
 def query() -> SearchQuery:
@@ -152,9 +158,9 @@ class WallClient:
         self._good = good
         self.calls = 0
 
-    def get(self, url: str) -> BeautifulSoup:
+    def fetch(self, url: str) -> Fetch:
         self.calls += 1
-        return BeautifulSoup(CARD_PAGE if self.calls <= self._good else EMPTY_PAGE, "html.parser")
+        return Fetch(BeautifulSoup(CARD_PAGE if self.calls <= self._good else EMPTY_PAGE, "html.parser"))
 
 
 class ByKeywordClient:
@@ -166,11 +172,11 @@ class ByKeywordClient:
     def __init__(self, walled: str = ""):
         self._walled = walled
 
-    def get(self, url: str) -> BeautifulSoup | None:
+    def fetch(self, url: str) -> Fetch:
         if self._walled and f"keywords={self._walled}&" in url:
-            return None
+            return Fetch(None)
         has_cards = "keywords=yes&" in url and url.endswith("start=0")
-        return BeautifulSoup(CARD_PAGE if has_cards else EMPTY_PAGE, "html.parser")
+        return Fetch(BeautifulSoup(CARD_PAGE if has_cards else EMPTY_PAGE, "html.parser"))
 
 
 def config(queries: list[SearchQuery], search_workers: int = 3) -> Config:
@@ -299,14 +305,14 @@ class SessionClient:
         self.renewals += 1
         self._current = min(self._current + 1, len(self._states) - 1)
 
-    def get(self, url: str) -> BeautifulSoup | None:
+    def fetch(self, url: str) -> Fetch:
         state = self._states[self._current]
         if state == "fail":
-            return None
+            return Fetch(None)
         if state == "empty":
-            return BeautifulSoup(EMPTY_PAGE, "html.parser")
+            return Fetch(BeautifulSoup(EMPTY_PAGE, "html.parser"))
         page = OTHER_CARD_PAGE if state == "B" and "f_WT=2" in url else CARD_PAGE
-        return BeautifulSoup(page, "html.parser")
+        return Fetch(BeautifulSoup(page, "html.parser"))
 
 
 def test_a_filtering_session_is_kept_without_a_renewal():
@@ -360,6 +366,14 @@ def test_fetch_posting_marks_a_closed_posting_not_open():
     client = StubClient([CLOSED_PAGE])
     job = fetch_posting(a_job(), client)
     assert job.is_open is False
+
+
+def test_fetch_posting_marks_a_gone_posting_closed():
+    """A removed posting (404/410) is gone for good, so record it closed rather than leave it unchecked."""
+    client = StubClient([GONE])
+    job = fetch_posting(a_job(), client)
+    assert job.is_open is False
+    assert job.job_description is None  # nothing to store, so an existing description survives
 
 
 def test_a_failed_fetch_leaves_description_and_open_none_rather_than_a_placeholder():

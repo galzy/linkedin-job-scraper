@@ -1,0 +1,43 @@
+# Copy to config.yaml, then edit. See the Configuration section of the README.
+
+# Anchors let one value serve several queries. Any top-level key the schema
+# doesn't declare is ignored, so this block exists only to hold them.
+x-keywords:
+  broad: &broad >-
+    python OR etl OR developer
+  narrow: &narrow >-
+    python OR (developer AND (backend OR cloud OR data))
+
+# A mapping anchor holds shared filters; merge it into a query with `<<: *name`.
+# Keys written on the query win over the merged ones, so you can override per query.
+x-defaults:
+  away: &away
+    distance: ANY
+    timespan: WEEK
+    workplace_type: [remote]
+
+search_queries:
+  - keywords: *broad
+    location: Bologna
+    distance: KM_40
+    timespan: WEEK
+    # LinkedIn never returns the type, so a search runs once per type listed here, and each job's
+    # type is read from which variant surfaced it. [] or omit harvests and keeps all three.
+    # Values: on_site, remote, hybrid.
+    workplace_type: [remote, hybrid]
+  - keywords: *narrow
+    location: Ireland
+    <<: *away
+
+title_exclude: [senior, manager, intern]
+company_exclude: [badcompany, anotherbadcompany]
+http:
+  max_requests_per_minute: 20
+  search_workers: 3
+  description_workers: 3
+  timeout: 20.0
+  retries: 5
+  backoff_base: 2.0
+  backoff_max: 60.0
+  backoff_jitter: 2.0
+  retry_after_cap: 120.0

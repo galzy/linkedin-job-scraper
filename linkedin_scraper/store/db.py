@@ -173,22 +173,22 @@ class JobsDb:
         with self.engine.begin() as conn:
             conn.execute(_STAGING_UPSERT, staged)
 
-    def insert_jobs(self, jobs: list[Job], countries: frozenset[str] = frozenset()) -> int:
-        """Store the jobs, returning how many were new; ``countries`` scopes each location's metro label."""
+    def insert_jobs(self, jobs: list[Job], countries: frozenset[str] = frozenset()) -> set[str]:
+        """Store the jobs, returning the URLs that were new; ``countries`` scopes each location's metro label."""
         if not jobs:
-            return 0
+            return set()
 
         seen_at = datetime.now().isoformat(sep=" ", timespec="seconds")
         rows = [_row(job, seen_at, countries) for job in jobs]
 
         with self.engine.begin() as conn:
-            # An upserted row is updated, not skipped, so rowcount counts it too.
-            before = conn.scalar(select(func.count()).select_from(JobRow))
+            # An upsert updates a matched row rather than skipping it, so identify new rows by URL, not rowcount.
+            existing = {u for (u,) in conn.execute(select(JobRow.job_url))}
             conn.execute(_JOB_UPSERT, rows)
-            added = conn.scalar(select(func.count()).select_from(JobRow)) - before
+        new = {job.job_url for job in jobs} - existing
 
-        logger.info(f"New jobs added to {TABLE_JOBS_RAW}: {added:,}")
-        return added
+        logger.info(f"New jobs added to {TABLE_JOBS_RAW}: {len(new):,}")
+        return new
 
     def refresh_relevance(self, predicate: Callable[[str, str, str, set[str]], bool]) -> int:
         """Re-decide is_relevant for every stored row, returning how many settled verdicts reversed.

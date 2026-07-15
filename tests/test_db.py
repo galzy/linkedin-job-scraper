@@ -80,16 +80,15 @@ def test_insert_jobs_stamps_one_sighting_time_across_the_batch(db):
 
 
 def test_reinserting_an_existing_row_adds_no_row(db):
-    """The upsert updates the stored row rather than skipping it, so the count of new rows
-    cannot come from rowcount — which would report the touched row as added."""
+    """A re-seen job upserts its row in place, so it is absent from the returned new URLs and adds no row."""
     db.insert_jobs([job()])
-    assert db.insert_jobs([job()]) == 0
+    assert db.insert_jobs([job()]) == set()
     assert len(rows(db, "title")) == 1
 
 
 def test_insert_jobs_appends_only_the_new_rows(db):
     db.insert_jobs([job()])
-    assert db.insert_jobs([job(), job(job_url="https://x/2/")]) == 1
+    assert db.insert_jobs([job(), job(job_url="https://x/2/")]) == {"https://x/2/"}
     assert sorted(row[0] for row in rows(db, "job_url")) == ["https://x/1/", "https://x/2/"]
 
 

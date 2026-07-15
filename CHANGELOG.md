@@ -306,6 +306,10 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
   is what every test in it already tested. `build_client` becomes `HttpClient.from_config`, next to
   the constructor it mirrors: every `HttpConfig` field exists to feed it, so forwarding them through
   `main` spelled each name a third time.
+- The `Relevant this run` log line — and the run summary's `relevant` and `added` counts — now count
+  only the jobs new to this run (`X of Y new`), not every relevant listing the search re-surfaced. The
+  re-seen ones were fetched in earlier runs, so tallying them read as a mismatch against the smaller
+  fetch worklist. `insert_jobs` returns the URLs it added, not a bare count, to key the tally on.
 
 ### Removed
 - The `label` column on `queries`. It stored a human-readable rendering of each query, but every

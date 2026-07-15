@@ -74,7 +74,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
     ]
 
     # Every scraped job is stored, relevant or not, so irrelevant ones are not re-scraped next run.
-    added = db.insert_jobs(jobs=jobs_deduped, countries=countries)
+    new_urls = db.insert_jobs(jobs=jobs_deduped, countries=countries)
     db.reset_staging()  # rows are in jobs_raw now; clear the WAL for the next run
 
     # Record provenance before judging, since refresh_relevance reads each job's query links.
@@ -87,8 +87,8 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
 
     # After the insert and attribution, so this run's new rows are judged with their links.
     flipped = db.refresh_relevance(predicate=relevance_predicate(config))
-    relevant = db.relevant_among({job.job_url for job in jobs_deduped})
-    logger.info(f"Relevant this run: {relevant:,} of {len(jobs_deduped):,}")
+    relevant = db.relevant_among(new_urls)
+    logger.info(f"Relevant this run: {relevant:,} of {len(new_urls):,} new")
 
     if blocked is not None:
         logger.warning("Not fetching postings while blocked; next run picks up the missing ones")
@@ -113,7 +113,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
             "scraped": scraped,
             "deduped": len(jobs_deduped),
             "relevant": relevant,
-            "added": added,
+            "added": len(new_urls),
             "flipped": flipped,
         },
         config_yaml=config_yaml,

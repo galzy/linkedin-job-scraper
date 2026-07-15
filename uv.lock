@@ -182,6 +182,7 @@ dependencies = [
     { name = "pydantic" },
     { name = "pyyaml" },
     { name = "requests" },
+    { name = "rich" },
     { name = "sqlalchemy" },
     { name = "typer" },
 ]
@@ -202,6 +203,7 @@ requires-dist = [
     { name = "pydantic", specifier = ">=2.13.4,<3.0.0" },
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "requests", specifier = ">=2.34.2,<3.0.0" },
+    { name = "rich", specifier = ">=13.0,<16.0" },
     { name = "sqlalchemy", specifier = ">=2.0.51,<2.1" },
     { name = "typer", specifier = ">=0.26,<0.27" },
 ]

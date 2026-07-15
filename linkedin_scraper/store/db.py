@@ -182,7 +182,7 @@ class JobsDb:
             conn.execute(_JOB_UPSERT, rows)
             added = conn.scalar(select(func.count()).select_from(JobRow)) - before
 
-        logger.info(f"Added {added:,} of {len(jobs):,} scraped jobs to {TABLE_JOBS_RAW}")
+        logger.info(f"New jobs added to {TABLE_JOBS_RAW}: {added:,}")
         return added
 
     def refresh_relevance(self, predicate: Callable[[str, str, str, set[str]], bool]) -> int:
@@ -217,10 +217,10 @@ class JobsDb:
                 _update_jobs_by_url(conn, ["is_relevant"], updates)
 
         flipped = to_relevant + to_irrelevant
-        logger.info(
-            f"Re-judged all stored jobs against current config: {flipped:,} verdicts flipped "
-            f"({to_relevant:,} now relevant, {to_irrelevant:,} now irrelevant)"
-        )
+        message = f"Re-judged all stored jobs against current config: {flipped:,} verdicts flipped"
+        if flipped:
+            message += f" ({to_relevant:,} now relevant, {to_irrelevant:,} now irrelevant)"
+        logger.info(message)
         return flipped
 
     def fill_missing_country_from_queries(self) -> int:

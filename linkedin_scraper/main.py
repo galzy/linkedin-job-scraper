@@ -62,7 +62,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
     jobs_deduped, attribution = db.staged_scrape()
     scraped = sum(sum(counter.values()) for counter in attribution.values())
     logger.info(f"Total jobs scraped: {scraped:,}")
-    logger.info(f"Total jobs after removing duplicates: {len(jobs_deduped):,}")
+    logger.info(f"After removing duplicates: {len(jobs_deduped):,}")
 
     # Label each job by the tagged query that found it, so the workplace filter can judge it.
     query_types = {q.query_id: q.harvest_type for q in config.scrape_queries}
@@ -85,7 +85,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
     # After the insert and attribution, so this run's new rows are judged with their links.
     flipped = db.refresh_relevance(predicate=relevance_predicate(config))
     relevant = db.relevant_among({job.job_url for job in jobs_deduped})
-    logger.info(f"Relevant: {relevant:,} of {len(jobs_deduped):,} jobs")
+    logger.info(f"Relevant this run: {relevant:,} of {len(jobs_deduped):,}")
 
     if blocked is not None:
         logger.warning("Not fetching postings while blocked; next run picks up the missing ones")

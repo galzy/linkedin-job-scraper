@@ -283,6 +283,29 @@ def test_the_filtered_view_hides_closed_jobs_but_keeps_open_and_unchecked_ones(d
     assert {u for (u,) in rows(db, "job_url", table="jobs_filtered")} == {"https://x/2/", "https://x/3/"}
 
 
+def test_clear_dead_descriptions_drops_text_on_rows_the_view_hides(db):
+    """Descriptions on non-kept rows (irrelevant or closed) are dropped; kept ones and is_english survive."""
+    english = "We are hiring a backend engineer to build data pipelines in Python."
+    db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")  # x/3 Chef is irrelevant
+    db.record_postings(
+        [
+            job(job_url="https://x/1/", job_description=english),  # relevant, open -> kept
+            job(job_url="https://x/2/", job_description=english, is_open=False),  # relevant, closed
+            job(job_url="https://x/3/", job_description=english),  # irrelevant
+        ]
+    )
+
+    assert db.clear_dead_descriptions() == 2  # the closed and the irrelevant row
+    assert dict(rows(db, "job_url", "job_description")) == {
+        "https://x/1/": english,
+        "https://x/2/": None,
+        "https://x/3/": None,
+    }
+    assert {e for (e,) in rows(db, "is_english")} == {1}  # judged at fetch time, untouched by the clear
+    assert db.clear_dead_descriptions() == 0  # nothing left; a row already NULL is not recounted
+
+
 def test_postings_to_refresh_includes_relevant_rows_missing_a_description_at_any_age(db):
     db.insert_jobs([job(date="2024-01-01"), job(title="Chef", job_url="https://x/2/")])
     db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")

@@ -57,6 +57,7 @@ def recompute(config_file: str | Path) -> None:
     db.create_schema()
     db.refresh_relevance(predicate=relevance_predicate(config))
     db.refresh_dup_counts()  # relevance moved the kept set, so the per-group counts must follow
+    db.clear_dead_descriptions()  # jobs the edit made irrelevant no longer show their text
     db.close()
 
 
@@ -78,6 +79,7 @@ def refresh(config_file: str | Path, recheck_days: int = RECHECK_DAYS) -> None:
     client = HttpClient.from_config(config.http)
     counts = fetch_postings(jobs, client, config.http.description_workers, db.record_postings)
     client.close()
+    db.clear_dead_descriptions()  # a posting this run found closed no longer shows its text
     db.close()
     logger.success(
         f"Filled {counts['described']} descriptions, verified {counts['checked']} postings "
@@ -120,7 +122,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--version", action="version", version=_version())
     sub = parser.add_subparsers(dest="command", required=True)
 
-    scrape = sub.add_parser("scrape", help="scrape jobs into the database")
+    scrape = sub.add_parser(
+        "scrape", help="scrape jobs into the database; clears descriptions off the ones filtered out or closed"
+    )
     scrape.add_argument("config", nargs="?", default=CONFIG_PATH, help="a config to scrape with")
     scrape.add_argument(
         "--max-pages",
@@ -134,11 +138,16 @@ def build_parser() -> argparse.ArgumentParser:
 
     recompute_cmd = sub.add_parser(
         "recompute",
-        help="re-derive stored verdicts (relevance and duplicate counts) from a config, no scraping",
+        help="re-derive stored verdicts (relevance and duplicate counts) from a config, no scraping; "
+        "clears descriptions off jobs the edit made irrelevant",
     )
     recompute_cmd.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config whose filters to apply")
 
-    refresh_cmd = sub.add_parser("refresh", help="fetch missing descriptions and re-check open-status for stored jobs")
+    refresh_cmd = sub.add_parser(
+        "refresh",
+        help="fetch missing descriptions and re-check open-status for stored jobs; "
+        "clears descriptions off any the check found closed",
+    )
     refresh_cmd.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config providing HTTP settings")
     refresh_cmd.add_argument(
         "--recheck-days",

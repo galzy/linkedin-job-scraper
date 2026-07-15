@@ -104,6 +104,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
 
     # Recount duplicate groups now that the kept set has settled.
     db.refresh_dup_counts()
+    db.clear_dead_descriptions()
 
     db.record_run(
         started_at=started_at,

@@ -125,7 +125,7 @@ Every run writes each job it scrapes to **`jobs_raw`** — raw in that it holds 
 | `last_seen` | When last scraped. Moves on every sighting; `first_seen` doesn't. |
 | `runs_seen` | How many runs surfaced this job — one per run, however many searches found it. |
 | `is_relevant` | Whether the config's filters keep the job. `NULL` until first judged, then recomputed every run. |
-| `job_description` | `NULL` until the job passes the filters, then its full text — or `Could not find job description` when the page genuinely has none. |
+| `job_description` | `NULL` until the job passes the filters, then its full text — or `Could not find job description` when the page genuinely has none. Dropped back to `NULL` if the job later stops being kept (rejected or closed); it re-fetches should it become relevant again. |
 | `is_english` | Whether the description reads as English — a rough proxy for a role open to non-local candidates. `1`/`0` once a description is fetched; `NULL` while none exists or the text is too short to judge. |
 | `is_open` | Whether the posting still accepts applications. Starts `1` (presumed open — it just surfaced in search), then a posting-page fetch settles it; `0` once it closes. `NULL` only on rows stored before this was tracked. |
 | `last_verified` | When `is_open` was last confirmed by fetching the page; `NULL` until that first fetch (the opening presumption is not a check). |
@@ -176,10 +176,12 @@ job, so editing the config stales every stored verdict. Each run re-decides the 
 the jobs it scraped, and rejected rows stay in `jobs_raw` so you can audit what the filters threw
 away. (`recompute` does this without scraping.)
 
-**Descriptions are backfilled.** Each run fetches descriptions for every relevant job that still
-lacks one, not only newly-seen ones. A failed fetch (timeout, 429) leaves `job_description` `NULL`
-and is retried next run, as long as the job keeps turning up. A page that loads with genuinely no
-description stores the literal `Could not find job description` and is not retried.
+**Descriptions are backfilled, and cleared.** Each run fetches descriptions for every relevant job that
+still lacks one, not only newly-seen ones. A failed fetch (timeout, 429) leaves `job_description` `NULL`
+and is retried next run; a page with genuinely no description stores the literal `Could not find job
+description` and is not retried. Once the kept set settles, the mirror runs: descriptions on rows the
+`jobs_filtered` view no longer shows (rejected or closed) drop back to `NULL`, so the DB doesn't grow
+unbounded. A rejected job that later flips relevant simply re-fetches its description.
 
 **Why `title_include` exists.** LinkedIn matches `keywords` against the whole posting, not the title,
 so a `python` search also returns sales roles that merely mention it. `title_include` is the only

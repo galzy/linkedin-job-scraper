@@ -5,7 +5,7 @@ from collections.abc import Callable, Collection
 from datetime import datetime
 
 from loguru import logger
-from sqlalchemy import Row, and_, create_engine, delete, func, insert, or_, select, text
+from sqlalchemy import Row, and_, create_engine, delete, func, insert, or_, select, text, update
 
 from linkedin_scraper.config import SearchQuery
 from linkedin_scraper.constants import (
@@ -277,6 +277,25 @@ class JobsDb:
                 _update_jobs_by_url(conn, ["dup_count"], updates)
         logger.debug(f"Recomputed dup_count on {len(updates):,} rows")
         return len(updates)
+
+    def clear_dead_descriptions(self) -> int:
+        """Drop job_description on rows outside jobs_filtered — their text is never shown; returns how many.
+
+        Non-kept means irrelevant or confirmed-closed. A cleared irrelevant row re-fetches its
+        description if it later flips relevant; a closed one does not (its posting 404s), and isn't
+        shown regardless. is_english, written at fetch time, is left intact. Run after the kept set settles.
+        """
+        with self.engine.begin() as conn:
+            result = conn.execute(
+                update(JobRow)
+                .where(
+                    JobRow.job_description.isnot(None),
+                    or_(JobRow.is_relevant.isnot(True), JobRow.is_open.is_(False)),
+                )
+                .values(job_description=None)
+            )
+        logger.debug(f"Cleared descriptions from {result.rowcount:,} non-kept rows")
+        return result.rowcount
 
     def upsert_queries(self, queries: list[SearchQuery], run_ts: str) -> None:
         """Record every query the run used, keeping each one's first_used and advancing last_used."""

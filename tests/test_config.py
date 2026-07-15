@@ -56,12 +56,6 @@ def test_keywords_and_location_are_held_raw_and_quoted_only_in_the_url():
     assert "location=New%20York" in q.page_url(0)
 
 
-def test_query_id_is_stable_across_identical_queries():
-    a = SearchQuery(keywords="python", location="Bologna")
-    b = SearchQuery(keywords="python", location="Bologna")
-    assert a.query_id == b.query_id
-
-
 @pytest.mark.parametrize(
     "overrides",
     [

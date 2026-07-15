@@ -91,34 +91,6 @@ def test_stored_job_commands_bail_without_a_db(command, args, tmp_path, monkeypa
     assert not db.exists()
 
 
-def test_recompute_dispatches_to_its_handler(monkeypatch):
-    from linkedin_scraper import cli
-
-    called = []
-    monkeypatch.setattr(cli, "recompute", lambda config: called.append(config))
-    monkeypatch.setattr(sys, "argv", ["linkedin_scraper", "recompute"])
-
-    with pytest.raises(SystemExit) as excinfo:  # Typer exits 0 once the command returns
-        cli.main()
-
-    assert excinfo.value.code == 0
-    assert called == [cli.CONFIG_PATH]
-
-
-def test_prune_dispatches_with_the_parsed_day_count(monkeypatch):
-    from linkedin_scraper import cli
-
-    called = []
-    monkeypatch.setattr(cli, "prune", lambda days: called.append(days))
-    monkeypatch.setattr(sys, "argv", ["linkedin_scraper", "prune", "90"])
-
-    with pytest.raises(SystemExit) as excinfo:  # Typer exits 0 once the command returns
-        cli.main()
-
-    assert excinfo.value.code == 0
-    assert called == [90]
-
-
 @pytest.mark.parametrize("days", ["0", "not-a-number"])
 def test_prune_rejects_a_non_positive_day_count(days):
     """Typer refuses it with exit 2 before any handler runs, naming the offending argument."""

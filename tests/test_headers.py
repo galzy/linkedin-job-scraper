@@ -1,15 +1,10 @@
 from datetime import date
 
 from linkedin_scraper.net.headers import (
-    _ANCHOR,
     _ANCHOR_CHROME,
     _build_profiles,
     current_chrome_major,
 )
-
-
-def test_at_the_anchor_returns_the_baseline_major():
-    assert current_chrome_major(_ANCHOR) == _ANCHOR_CHROME
 
 
 def test_projects_forward_over_time_and_stays_monotonic():

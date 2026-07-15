@@ -1,0 +1,12 @@
+# Normalize line endings so cross-OS commits don't churn.
+* text=auto
+*.py text
+*.md text
+*.toml text
+*.yaml text
+*.yml text
+*.json text
+*.html text
+
+# Binary artifacts: never touch their bytes.
+*.db binary

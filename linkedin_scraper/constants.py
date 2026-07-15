@@ -28,4 +28,4 @@ TABLE_QUERIES = "queries"  # the distinct search queries ever run, keyed by cont
 TABLE_JOB_QUERIES = "job_queries"  # which query found which job, with sighting counts
 TABLE_RUNS = "runs"  # one row per run: timestamps, counts, and the config used
 TABLE_RUN_QUERIES = "run_queries"  # which queries each run used
-TABLE_SCRAPE_STAGING = "scrape_staging"  # this run's raw cards, flushed per query; wiped at run start
+TABLE_SCRAPE_STAGING = "scrape_staging"  # this run's raw cards, flushed per query; cleared once promoted

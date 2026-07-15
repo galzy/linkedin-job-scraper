@@ -94,8 +94,13 @@ class JobsDb:
             relevant = {u for (u,) in conn.execute(select(JobRow.job_url).where(JobRow.is_relevant.is_(True)))}
         return len(relevant & set(job_urls))
 
+    def staged_count(self) -> int:
+        """How many rows sit in staging — nonzero only after a prior run crashed mid-promotion."""
+        with self.engine.connect() as conn:
+            return conn.scalar(select(func.count()).select_from(StagingRow))
+
     def staged_scrape(self) -> tuple[list[Job], dict[str, Counter[str]]]:
-        """This run's staged cards as (postings deduped by url, per-query attribution)."""
+        """The staged cards as (postings deduped by url, per-query attribution)."""
         attribution: dict[str, Counter[str]] = defaultdict(Counter)
         jobs: dict[str, Job] = {}
         with self.engine.connect() as conn:
@@ -138,7 +143,7 @@ class JobsDb:
     # --- writes --------------------------------------------------------------
 
     def reset_staging(self) -> None:
-        """Clear the staging table so a new run starts from an empty scrape."""
+        """Clear the staging table once its rows have reached jobs_raw."""
         with self.engine.begin() as conn:
             conn.execute(delete(StagingRow))
 

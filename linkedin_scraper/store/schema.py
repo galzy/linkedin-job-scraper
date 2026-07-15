@@ -104,7 +104,7 @@ class RunQueryRow(SqlBase):
 class StagingRow(SqlBase):
     """One posting a query scraped this run, staged before the end-of-run pipeline consumes it.
 
-    Wiped at the start of every run; a crash mid-scrape leaves the completed queries' rows behind.
+    Cleared once its rows reach jobs_raw; a crash before then leaves them for the next run to recover.
     """
 
     __tablename__ = TABLE_SCRAPE_STAGING

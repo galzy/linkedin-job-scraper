@@ -44,7 +44,8 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
   existing databases by a one-off `ALTER TABLE`; new databases get them from the model.)
 - Crash durability for the scrape. Each query's cards are flushed to a `scrape_staging` table the moment
   the query finishes, and the end-of-run pipeline reads the run back from it. A crash mid-scrape now leaves
-  the finished queries' jobs on disk instead of losing the whole run; the table is wiped at each run's start.
+  the finished queries' jobs on disk instead of losing the whole run; the table is cleared only after its rows
+  reach `jobs_raw`, so the next run recovers any left by a crash rather than wiping them.
   `scrape_jobs` stages through a callback rather than returning its jobs in memory, so `BlockedError` no
   longer carries a payload. Within-run dedupe moved from `filters.remove_duplicates` (removed) to the staging
   read, keyed on `job_url`.

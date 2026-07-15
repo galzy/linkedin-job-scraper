@@ -607,3 +607,23 @@ def test_reset_staging_empties_the_table(db):
 
     assert jobs == []
     assert not attribution
+
+
+def test_staged_count_tracks_the_pending_rows(db):
+    assert db.staged_count() == 0
+    db.stage_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/")], "qA")
+    assert db.staged_count() == 2
+    db.reset_staging()
+    assert db.staged_count() == 0
+
+
+def test_leftover_staging_is_promoted_before_it_is_cleared(db):
+    """A prior run's staged rows reach jobs_raw, and staging is cleared only after — the WAL discipline."""
+    db.stage_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/")], "qA")
+
+    promoted, _ = db.staged_scrape()  # what main() reads back before promoting
+    db.insert_jobs(promoted)
+    db.reset_staging()  # only after the durable insert
+
+    assert sorted(u for (u,) in rows(db, "job_url")) == ["https://x/1/", "https://x/2/"]
+    assert db.staged_count() == 0

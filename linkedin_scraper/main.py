@@ -50,8 +50,10 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
         db.close()
         raise NoFilteringSessionError("Every session draw ignored the workplace filter; nothing scraped")
 
-    # Each query stages as it finishes, so a block still leaves the ones that ran on disk to read back.
-    db.reset_staging()
+    # Staging is the scrape's write-ahead log, cleared only once its rows reach jobs_raw. Leftover rows
+    # mean a prior run crashed mid-promotion; fold them into this run rather than drop them.
+    if orphaned := db.staged_count():
+        logger.warning(f"Recovering {orphaned:,} staged rows from an interrupted prior run")
     blocked: BlockedError | None = None
     try:
         scrape_jobs(config=config, client=client, stage=db.stage_jobs, max_pages=max_pages)
@@ -73,6 +75,7 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
 
     # Every scraped job is stored, relevant or not, so irrelevant ones are not re-scraped next run.
     added = db.insert_jobs(jobs=jobs_deduped, countries=countries)
+    db.reset_staging()  # rows are in jobs_raw now; clear the WAL for the next run
 
     # Record provenance before judging, since refresh_relevance reads each job's query links.
     run_ts = datetime.now().isoformat(sep=" ", timespec="seconds")

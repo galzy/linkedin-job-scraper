@@ -56,7 +56,7 @@ def test_an_invalid_config_named_on_the_command_line_exits_non_zero(tmp_path):
 
 @pytest.mark.parametrize("pages", ["0", str(MAX_PAGES + 1), "not-a-number"])
 def test_a_page_cap_outside_the_range_linkedin_serves_is_refused(pages):
-    """Argparse rejects it before any scraping, with exit 2 — not the 1 a bad config gives."""
+    """Typer rejects it before any scraping, with exit 2 — not the 1 a bad config gives."""
     result = scrape("--max-pages", pages)
 
     assert result.returncode == 2
@@ -68,7 +68,7 @@ def test_no_subcommand_is_an_error():
     result = run_cli()
 
     assert result.returncode == 2
-    assert "scrape" in result.stderr
+    assert "scrape" in result.stdout  # Typer lists the commands on a bare call
 
 
 SAMPLE = PROJECT_ROOT / "configs" / "config.sample.yaml"
@@ -98,8 +98,10 @@ def test_recompute_dispatches_to_its_handler(monkeypatch):
     monkeypatch.setattr(cli, "recompute", lambda config: called.append(config))
     monkeypatch.setattr(sys, "argv", ["linkedin_scraper", "recompute"])
 
-    cli.main()
+    with pytest.raises(SystemExit) as excinfo:  # Typer exits 0 once the command returns
+        cli.main()
 
+    assert excinfo.value.code == 0
     assert called == [cli.CONFIG_PATH]
 
 
@@ -110,14 +112,16 @@ def test_prune_dispatches_with_the_parsed_day_count(monkeypatch):
     monkeypatch.setattr(cli, "prune", lambda days: called.append(days))
     monkeypatch.setattr(sys, "argv", ["linkedin_scraper", "prune", "90"])
 
-    cli.main()
+    with pytest.raises(SystemExit) as excinfo:  # Typer exits 0 once the command returns
+        cli.main()
 
+    assert excinfo.value.code == 0
     assert called == [90]
 
 
 @pytest.mark.parametrize("days", ["0", "not-a-number"])
 def test_prune_rejects_a_non_positive_day_count(days):
-    """Argparse refuses it with exit 2 before any handler runs, naming the offending argument."""
+    """Typer refuses it with exit 2 before any handler runs, naming the offending argument."""
     result = run_cli("prune", days)
 
     assert result.returncode == 2

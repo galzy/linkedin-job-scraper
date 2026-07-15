@@ -1,12 +1,13 @@
-"""The command-line interface: argument parsing and the subcommands behind it."""
+"""The command-line interface: the Typer app and the subcommands behind it."""
 
-import argparse
 import shutil
 import sys
 import tomllib
 from datetime import datetime, timedelta
 from pathlib import Path
+from typing import Annotated
 
+import typer
 from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -21,6 +22,10 @@ from linkedin_scraper.store.db import JobsDb
 
 SAMPLE_CONFIG = CONFIGS_PATH / "config.sample.yaml"
 
+app = typer.Typer(no_args_is_help=True, help="Scrape LinkedIn jobs, filter them, and store them in a database.")
+
+ConfigArg = Annotated[Path, typer.Argument(help="the config file to use", show_default=False)]
+
 
 def _version() -> str:
     """The project version, read from pyproject.toml — its single source of truth."""
@@ -34,6 +39,20 @@ def _has_db() -> bool:
         return True
     logger.warning("No jobs stored yet — run scrape first")
     return False
+
+
+def _page_count(value: int) -> int:
+    """Validate a page cap against the range LinkedIn serves."""
+    if not 1 <= value <= MAX_PAGES:
+        raise typer.BadParameter(f"must be between 1 and {MAX_PAGES}")
+    return value
+
+
+def _positive_days(value: int) -> int:
+    """Validate a strictly positive number of days."""
+    if value < 1:
+        raise typer.BadParameter("must be a positive number of days")
+    return value
 
 
 def init_config(path: str | Path) -> None:
@@ -141,87 +160,87 @@ def prune(days: int) -> None:
     db.close()
 
 
-def page_count(value: str) -> int:
-    """An argparse type: a page cap inside the range LinkedIn serves."""
-    pages = int(value)
-    if not 1 <= pages <= MAX_PAGES:
-        raise argparse.ArgumentTypeError(f"must be between 1 and {MAX_PAGES}")
-    return pages
+def _version_callback(value: bool) -> None:
+    if value:
+        print(_version())
+        raise typer.Exit()
 
 
-def positive_days(value: str) -> int:
-    """An argparse type: a strictly positive number of days."""
-    days = int(value)
-    if days < 1:
-        raise argparse.ArgumentTypeError("must be a positive number of days")
-    return days
+@app.callback()
+def _root(
+    version: Annotated[
+        bool,
+        typer.Option("--version", callback=_version_callback, is_eager=True, help="show the version and exit"),
+    ] = False,
+) -> None:
+    pass
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="linkedin_scraper")
-    parser.add_argument("--version", action="version", version=_version())
-    sub = parser.add_subparsers(dest="command", required=True)
+@app.command(help="scrape jobs into the database; clears descriptions off the ones filtered out or closed")
+def scrape(
+    config: ConfigArg = CONFIG_PATH,
+    max_pages: Annotated[
+        int,
+        typer.Option(
+            callback=_page_count,
+            help=f"stop each query after this many pages (default: {MAX_PAGES}, i.e. page to exhaustion)",
+        ),
+    ] = MAX_PAGES,
+) -> None:
+    run_scrape(config, max_pages=max_pages)
 
-    scrape = sub.add_parser(
-        "scrape", help="scrape jobs into the database; clears descriptions off the ones filtered out or closed"
-    )
-    scrape.add_argument("config", nargs="?", default=CONFIG_PATH, help="a config to scrape with")
-    scrape.add_argument(
-        "--max-pages",
-        type=page_count,
-        default=MAX_PAGES,
-        help=f"stop each query after this many pages (default: {MAX_PAGES}, i.e. page to exhaustion)",
-    )
 
-    init = sub.add_parser("init-config", help="write a starter config from the sample")
-    init.add_argument("path", help="where to write the new config")
+@app.command("init-config", help="write a starter config from the sample")
+def _init_config(
+    path: Annotated[Path, typer.Argument(help="where to write the new config", show_default=False)],
+) -> None:
+    init_config(path)
 
-    recompute_cmd = sub.add_parser(
-        "recompute",
-        help="re-derive stored verdicts (relevance and duplicate counts) from a config, no scraping; "
-        "clears descriptions off jobs the edit made irrelevant",
-    )
-    recompute_cmd.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config whose filters to apply")
 
-    refresh_cmd = sub.add_parser(
-        "refresh",
-        help="fetch missing descriptions and re-check open-status for stored jobs; "
-        "clears descriptions off any the check found closed",
-    )
-    refresh_cmd.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config providing HTTP settings")
-    refresh_cmd.add_argument(
-        "--recheck-days",
-        type=int,
-        default=RECHECK_DAYS,
-        help=f"re-check a posting's open-status once it is older than this many days (default: {RECHECK_DAYS})",
-    )
+@app.command(
+    "recompute",
+    help="re-derive stored verdicts (relevance and duplicate counts) from a config, no scraping; "
+    "clears descriptions off jobs the edit made irrelevant",
+)
+def _recompute(config: ConfigArg = CONFIG_PATH) -> None:
+    recompute(config)
 
-    sub.add_parser("status", help="show the last run and stored-job totals")
 
-    prune_cmd = sub.add_parser("prune", help="permanently delete old irrelevant or closed jobs from the database")
-    prune_cmd.add_argument("days", type=positive_days, help="delete matching jobs older than this many days")
+@app.command(
+    "refresh",
+    help="fetch missing descriptions and re-check open-status for stored jobs; "
+    "clears descriptions off any the check found closed",
+)
+def _refresh(
+    config: ConfigArg = CONFIG_PATH,
+    recheck_days: Annotated[
+        int, typer.Option(help="re-check a posting's open-status once it is older than this many days")
+    ] = RECHECK_DAYS,
+) -> None:
+    refresh(config, recheck_days)
 
-    return parser
+
+@app.command("status", help="show the last run and stored-job totals")
+def _status() -> None:
+    status()
+
+
+@app.command("prune", help="permanently delete old irrelevant or closed jobs from the database")
+def _prune(
+    days: Annotated[
+        int,
+        typer.Argument(callback=_positive_days, metavar="days", help="delete matching jobs older than this many days"),
+    ],
+) -> None:
+    prune(days)
 
 
 def main() -> None:
-    """Parse the command line and run the chosen subcommand."""
-    args = build_parser().parse_args()
-    try:
-        if args.command == "scrape":
-            run_scrape(args.config, max_pages=args.max_pages)
-        elif args.command == "init-config":
-            init_config(args.path)
-        elif args.command == "recompute":
-            recompute(args.config)
-        elif args.command == "refresh":
-            refresh(args.config, args.recheck_days)
-        elif args.command == "status":
-            status()
-        elif args.command == "prune":
-            prune(args.days)
+    """Run the Typer app, mapping run-time failures to exit codes a cron job can read."""
     # A cron job has nothing but the exit status to go on: 1 config/DB error, 2 usage, 3 blocked,
     # 4 no filtering session.
+    try:
+        app()
     except BlockedError as e:
         logger.error(e)
         sys.exit(3)

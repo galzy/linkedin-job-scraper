@@ -90,10 +90,13 @@ uv run linkedin-scraper scrape configs/other.yaml --max-pages 2 # another config
 | `recompute [config]` | Re-derive a config's verdicts over every stored job — flipping `is_relevant`, then recounting `dup_count` for the groups that shift — a filter edit's effect without waiting for the next scrape. |
 | `refresh [config] [--recheck-days N]` | Fetch missing data and re-check open-status for stored relevant jobs: anything still lacking a description or an open/closed verdict is fetched on sight; the rest are re-checked once older than N days (default 7) and not verified since. Uses the config's `http` settings only. |
 | `status` | Print the last run — when, how it ended, its counts — and the stored-job totals. |
+| `prune <days>` | Permanently delete stored jobs that are irrelevant or closed and older than N days. Asks for confirmation twice; needs an interactive terminal. |
 
 `config` defaults to `configs/config.yaml`. `--max-pages` caps every query for a quick run; it only
 ever lowers LinkedIn's own 100-page ceiling, and lives on the command line so no checked-in file can
 silently truncate a real scrape.
+
+Run `linkedin-scraper --install-completion` once for shell tab-completion of commands and options.
 
 `uv run python -m linkedin_scraper` runs the same thing if you'd rather not use the console script.
 Either way, `configs/`, `linkedin_jobs.db`, and `logs/` resolve against the repository root rather than
@@ -260,7 +263,7 @@ logs/2026-07-08.log      diagnostics, one file per day
 tests/                   pytest suite
 linkedin_scraper/
   __main__.py            the -m entry point; a shim over cli.py
-  cli.py                 the CLI: the argument parser and the subcommands behind it
+  cli.py                 the CLI: the Typer app and the subcommands behind it
   main.py                a scrape run end to end: scrape, dedupe, store, filter, refresh
   config.py              config schema, validation, loading (Pydantic)
   filters.py             transforms: workplace types and the relevance predicate

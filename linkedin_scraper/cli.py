@@ -109,12 +109,52 @@ def status() -> None:
     )
 
 
+def _confirm_prune(count: int, days: int) -> bool:
+    """Two distinct terminal confirmations before a destructive prune; False aborts on any miss."""
+    if not sys.stdin.isatty():
+        print("prune needs an interactive terminal to confirm; aborting", file=sys.stderr)
+        return False
+    print(
+        f"WARNING: permanently delete {count} irrelevant/closed jobs older than {days} days "
+        f"from {DB_PATH.name}? This cannot be undone."
+    )
+    if input("Type 'yes' to continue: ").strip() != "yes":
+        return False
+    return input(f"Final confirmation — re-type the number {count} to delete: ").strip() == str(count)
+
+
+def prune(days: int) -> None:
+    """Permanently delete stored jobs that are irrelevant or closed and older than ``days`` days."""
+    init_logging()
+    if not _has_db():
+        return
+    db = JobsDb(path=str(DB_PATH))
+    db.create_schema()
+    cutoff = (datetime.now() - timedelta(days=days)).isoformat(sep=" ", timespec="seconds")
+    count = db.count_prunable(cutoff)
+    if count == 0:
+        logger.info(f"No irrelevant or closed jobs older than {days} days to prune")
+    elif _confirm_prune(count, days):
+        logger.success(f"Pruned {db.prune_old(cutoff)} irrelevant or closed jobs older than {days} days")
+    else:
+        print("Aborted; nothing was deleted")
+    db.close()
+
+
 def page_count(value: str) -> int:
     """An argparse type: a page cap inside the range LinkedIn serves."""
     pages = int(value)
     if not 1 <= pages <= MAX_PAGES:
         raise argparse.ArgumentTypeError(f"must be between 1 and {MAX_PAGES}")
     return pages
+
+
+def positive_days(value: str) -> int:
+    """An argparse type: a strictly positive number of days."""
+    days = int(value)
+    if days < 1:
+        raise argparse.ArgumentTypeError("must be a positive number of days")
+    return days
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -158,6 +198,9 @@ def build_parser() -> argparse.ArgumentParser:
 
     sub.add_parser("status", help="show the last run and stored-job totals")
 
+    prune_cmd = sub.add_parser("prune", help="permanently delete old irrelevant or closed jobs from the database")
+    prune_cmd.add_argument("days", type=positive_days, help="delete matching jobs older than this many days")
+
     return parser
 
 
@@ -175,6 +218,8 @@ def main() -> None:
             refresh(args.config, args.recheck_days)
         elif args.command == "status":
             status()
+        elif args.command == "prune":
+            prune(args.days)
     # A cron job has nothing but the exit status to go on: 1 config/DB error, 2 usage, 3 blocked,
     # 4 no filtering session.
     except BlockedError as e:

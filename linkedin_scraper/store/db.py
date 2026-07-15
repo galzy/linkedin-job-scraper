@@ -147,6 +147,30 @@ class JobsDb:
         with self.engine.begin() as conn:
             conn.execute(delete(StagingRow))
 
+    @staticmethod
+    def _prunable(cutoff: str):
+        """Rows to prune: irrelevant or confirmed-closed, and older than ``cutoff``.
+
+        Age is the posting date, falling back to first_seen when the card carried none — the same
+        coalesce postings_to_refresh uses. Not-yet-judged rows (is_relevant/is_open NULL) never match.
+        """
+        age = func.coalesce(func.nullif(JobRow.date, ""), JobRow.first_seen)
+        return and_(age < cutoff, or_(JobRow.is_relevant.is_(False), JobRow.is_open.is_(False)))
+
+    def count_prunable(self, cutoff: str) -> int:
+        """How many stored jobs prune_old would delete at ``cutoff`` — for the pre-delete preview."""
+        with self.engine.connect() as conn:
+            return conn.scalar(select(func.count()).select_from(JobRow).where(self._prunable(cutoff)))
+
+    def prune_old(self, cutoff: str) -> int:
+        """Delete irrelevant/closed jobs older than ``cutoff`` and their attributions; returns rows removed."""
+        stale = self._prunable(cutoff)
+        with self.engine.begin() as conn:
+            conn.execute(delete(JobQueryRow).where(JobQueryRow.job_url.in_(select(JobRow.job_url).where(stale))))
+            deleted = conn.execute(delete(JobRow).where(stale)).rowcount
+        logger.debug(f"Pruned {deleted:,} irrelevant or closed jobs older than {cutoff}")
+        return deleted
+
     def stage_jobs(self, jobs: list[Job], query_id: str) -> None:
         """Persist one query's scraped cards, collapsing a posting's per-page repeats into times_seen."""
         if not jobs:

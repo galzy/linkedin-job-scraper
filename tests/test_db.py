@@ -306,6 +306,38 @@ def test_clear_dead_descriptions_drops_text_on_rows_the_view_hides(db):
     assert db.clear_dead_descriptions() == 0  # nothing left; a row already NULL is not recounted
 
 
+def test_prune_old_deletes_old_irrelevant_and_closed_jobs_and_their_attributions(db):
+    """Prunes irrelevant or closed rows older than the cutoff; keeps relevant-open and recent ones."""
+    with clock("2024-01-01 00:00:00"):  # first_seen for every row, only the empty-date one leans on it
+        db.insert_jobs(
+            [
+                job(job_url="https://x/1/"),  # relevant, open, old -> kept
+                job(title="Chef", job_url="https://x/2/"),  # irrelevant, old -> pruned
+                job(job_url="https://x/3/"),  # relevant, closed below, old -> pruned
+                job(title="Chef", date="2025-06-01", job_url="https://x/4/"),  # irrelevant but recent -> kept
+                job(title="Chef", date="", job_url="https://x/5/"),  # irrelevant, no date -> old first_seen -> pruned
+            ]
+        )
+    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.record_postings([job(job_url="https://x/3/", is_open=False)])
+    db.record_attribution({"q1": Counter({"https://x/1/": 1, "https://x/2/": 1})}, "2024-01-01 00:00:00")
+
+    cutoff = "2024-06-01 00:00:00"
+    assert db.count_prunable(cutoff) == 3
+    assert db.prune_old(cutoff) == 3
+    assert {u for (u,) in rows(db, "job_url")} == {"https://x/1/", "https://x/4/"}
+    assert {u for (u,) in rows(db, "job_url", table="job_queries")} == {"https://x/1/"}  # orphan attribution went too
+
+
+def test_prune_old_ignores_not_yet_judged_rows(db):
+    """A row never judged for relevance (is_relevant NULL) and still open is never prunable."""
+    with clock("2024-01-01 00:00:00"):
+        db.insert_jobs([job()])  # is_relevant NULL, is_open True
+
+    assert db.count_prunable("2025-01-01 00:00:00") == 0
+    assert db.prune_old("2025-01-01 00:00:00") == 0
+
+
 def test_postings_to_refresh_includes_relevant_rows_missing_a_description_at_any_age(db):
     db.insert_jobs([job(date="2024-01-01"), job(title="Chef", job_url="https://x/2/")])
     db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")

@@ -76,7 +76,7 @@ SAMPLE = PROJECT_ROOT / "configs" / "config.sample.yaml"
 
 @pytest.mark.parametrize(
     ("command", "args"),
-    [("recompute", [SAMPLE]), ("refresh", [SAMPLE]), ("status", [])],
+    [("recompute", [SAMPLE]), ("refresh", [SAMPLE]), ("status", []), ("prune", [90])],
 )
 def test_stored_job_commands_bail_without_a_db(command, args, tmp_path, monkeypatch):
     """With no database, they warn and return rather than creating an empty one."""
@@ -101,6 +101,27 @@ def test_recompute_dispatches_to_its_handler(monkeypatch):
     cli.main()
 
     assert called == [cli.CONFIG_PATH]
+
+
+def test_prune_dispatches_with_the_parsed_day_count(monkeypatch):
+    from linkedin_scraper import cli
+
+    called = []
+    monkeypatch.setattr(cli, "prune", lambda days: called.append(days))
+    monkeypatch.setattr(sys, "argv", ["linkedin_scraper", "prune", "90"])
+
+    cli.main()
+
+    assert called == [90]
+
+
+@pytest.mark.parametrize("days", ["0", "not-a-number"])
+def test_prune_rejects_a_non_positive_day_count(days):
+    """Argparse refuses it with exit 2 before any handler runs, naming the offending argument."""
+    result = run_cli("prune", days)
+
+    assert result.returncode == 2
+    assert "days" in result.stderr
 
 
 def test_init_config_writes_a_starter_and_refuses_to_overwrite(tmp_path):
@@ -194,3 +215,82 @@ def test_status_before_any_recorded_run_still_reports_totals(tmp_path, monkeypat
     out = capsys.readouterr().out
     assert "No runs recorded yet" in out
     assert "Stored: 0 jobs, 0 relevant, 0 missing descriptions" in out
+
+
+def _stored_count(db_path):
+    from linkedin_scraper.store.db import JobsDb
+
+    db = JobsDb(path=str(db_path))
+    total = db.totals()["stored"]
+    db.close()
+    return total
+
+
+def _seed_one_relevant_one_irrelevant(db_path):
+    """Two old jobs: a relevant Engineer (kept) and an irrelevant Chef (prunable)."""
+    from linkedin_scraper.job import Job
+    from linkedin_scraper.store.db import JobsDb
+
+    db = JobsDb(path=str(db_path))
+    db.create_schema()
+    db.insert_jobs(
+        [
+            Job(title="Engineer", company="ACME", date="2020-01-01", job_url="https://x/1/"),
+            Job(title="Chef", company="ACME", date="2020-01-01", job_url="https://x/2/"),
+        ]
+    )
+    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.close()
+
+
+def test_prune_deletes_matching_rows_after_both_confirmations(tmp_path, monkeypatch):
+    from linkedin_scraper import cli
+
+    db_path = tmp_path / "linkedin_jobs.db"
+    _seed_one_relevant_one_irrelevant(db_path)
+    monkeypatch.setattr(cli, "DB_PATH", db_path)
+    monkeypatch.setenv(LOG_DIR_ENV, str(tmp_path / "logs"))
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    answers = iter(["yes", "1"])  # one prunable row: the irrelevant Chef
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+
+    cli.prune(365)  # cutoff lands in 2025; the 2020-dated rows are older
+
+    assert _stored_count(db_path) == 1  # only the relevant Engineer survives
+
+
+def test_prune_a_wrong_second_confirmation_deletes_nothing(tmp_path, monkeypatch, capsys):
+    from linkedin_scraper import cli
+
+    db_path = tmp_path / "linkedin_jobs.db"
+    _seed_one_relevant_one_irrelevant(db_path)
+    monkeypatch.setattr(cli, "DB_PATH", db_path)
+    monkeypatch.setenv(LOG_DIR_ENV, str(tmp_path / "logs"))
+    monkeypatch.setattr(sys.stdin, "isatty", lambda: True)
+    answers = iter(["yes", "nope"])
+    monkeypatch.setattr("builtins.input", lambda prompt="": next(answers))
+
+    cli.prune(365)  # cutoff lands in 2025; the 2020-dated rows are older
+
+    assert "Aborted; nothing was deleted" in capsys.readouterr().out
+    assert _stored_count(db_path) == 2
+
+
+def test_prune_without_matching_rows_never_prompts(tmp_path, monkeypatch):
+    from linkedin_scraper import cli
+    from linkedin_scraper.job import Job
+    from linkedin_scraper.store.db import JobsDb
+
+    db_path = tmp_path / "linkedin_jobs.db"
+    db = JobsDb(path=str(db_path))
+    db.create_schema()
+    db.insert_jobs([Job(title="Engineer", company="ACME", date="2020-01-01", job_url="https://x/1/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)  # relevant and open -> not prunable
+    db.close()
+    monkeypatch.setattr(cli, "DB_PATH", db_path)
+    monkeypatch.setenv(LOG_DIR_ENV, str(tmp_path / "logs"))
+    monkeypatch.setattr("builtins.input", lambda prompt="": pytest.fail("must not prompt when nothing matches"))
+
+    cli.prune(3650)
+
+    assert _stored_count(db_path) == 1

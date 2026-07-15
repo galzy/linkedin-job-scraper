@@ -1,9 +1,9 @@
 import os
 from pathlib import Path
-from sys import stdout
 
 from loguru import logger
 
+from linkedin_scraper.console import console
 from linkedin_scraper.constants import LOGS_PATH
 
 LOG_DIR_ENV = "LINKEDIN_SCRAPER_LOG_DIR"  # override the log directory; tests point it at a tmp dir
@@ -19,7 +19,13 @@ def init_logging() -> None:
     """Point loguru at the console and a dated log file."""
     log_dir = Path(os.environ.get(LOG_DIR_ENV, LOGS_PATH))
     logger.remove()  # drop loguru's default handler so nothing is logged twice
-    logger.add(stdout, format=LOG_FORMAT, level=LOG_LEVEL_CONSOLE, colorize=True)
+    # Route console logs through the Rich console so a live spinner and log lines never fight.
+    logger.add(
+        lambda m: console.print(m, end="", markup=False, highlight=False, soft_wrap=True),
+        format=LOG_FORMAT,
+        level=LOG_LEVEL_CONSOLE,
+        colorize=False,
+    )
     logger.add(
         str(log_dir / LOG_FILE_NAME),  # loguru creates the parent directory itself
         format=LOG_FORMAT,

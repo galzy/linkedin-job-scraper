@@ -270,6 +270,7 @@ linkedin_scraper/
   job.py                 the Job record, frozen; shared by parsing, filters, and the store
   geo.py                 the country a job's location names
   logger.py              loguru setup and its defaults
+  console.py             the shared Rich console and the scrape/refresh spinner
   constants.py           paths, LinkedIn endpoints, DB identifiers
   net/http.py            rate-limited, connection-pooling HTTP client
   scrape/

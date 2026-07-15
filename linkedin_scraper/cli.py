@@ -12,6 +12,7 @@ from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 
 from linkedin_scraper.config import ConfigurationError, load_config
+from linkedin_scraper.console import live_status
 from linkedin_scraper.constants import CONFIG_PATH, CONFIGS_PATH, DB_PATH, MAX_PAGES, PROJECT_ROOT, RECHECK_DAYS
 from linkedin_scraper.filters import relevance_predicate
 from linkedin_scraper.logger import init_logging
@@ -96,7 +97,8 @@ def refresh(config_file: str | Path, recheck_days: int = RECHECK_DAYS) -> None:
         return
 
     client = HttpClient.from_config(config.http)
-    counts = fetch_postings(jobs, client, config.http.description_workers, db.record_postings)
+    with live_status("Fetching postings…"):
+        counts = fetch_postings(jobs, client, config.http.description_workers, db.record_postings)
     client.close()
     db.clear_dead_descriptions()  # a posting this run found closed no longer shows its text
     db.close()
@@ -187,7 +189,8 @@ def scrape(
         ),
     ] = MAX_PAGES,
 ) -> None:
-    run_scrape(config, max_pages=max_pages)
+    with live_status("Scraping LinkedIn…"):
+        run_scrape(config, max_pages=max_pages)
 
 
 @app.command("init-config", help="write a starter config from the sample")

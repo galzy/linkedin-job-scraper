@@ -41,7 +41,7 @@ def relevance_predicate(config: Config) -> Callable[[str, str, str, set[str]], b
     keep_lists = {variant.query_id: variant.workplace_type for variant in config.scrape_queries}
 
     def keep(title: str, company: str, workplace_type: str, query_ids: set[str]) -> bool:
-        title, company = title.lower(), company.lower()
+        title, company = " ".join(title.lower().split()), company.lower()
         # An empty include list means "no filter", not "match nothing". The exclude checks need
         # no such guard: neither an empty list nor an empty set excludes anything.
         if title_include and not any(phrase in title for phrase in title_include):

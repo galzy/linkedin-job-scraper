@@ -205,6 +205,36 @@ def test_load_config_reports_every_failure_as_configuration_error(tmp_path, make
         load_config(make_path(tmp_path))
 
 
+def test_a_location_list_fans_into_one_query_per_location_in_order():
+    config = load_and_validate_config(raw(keywords="python", location=["Milan", "Italy", "Ireland"]))
+    assert [q.location for q in config.search_queries] == ["Milan", "Italy", "Ireland"]
+    assert all(q.keywords == "python" for q in config.search_queries)
+    assert len({q.query_id for q in config.search_queries}) == 3
+
+
+def test_a_location_list_matches_the_same_queries_written_out_by_hand():
+    listed = load_and_validate_config(raw(keywords="python", location=["Milan", "Italy"]))
+    unrolled = load_and_validate_config(
+        {"search_queries": [{"keywords": "python", "location": "Milan"}, {"keywords": "python", "location": "Italy"}]}
+    )
+    assert [q.query_id for q in listed.search_queries] == [q.query_id for q in unrolled.search_queries]
+
+
+def test_a_string_location_still_yields_a_single_query():
+    config = load_and_validate_config(raw(location="Bologna"))
+    assert [q.location for q in config.search_queries] == ["Bologna"]
+
+
+def test_a_location_list_fans_out_across_the_workplace_variants():
+    config = load_and_validate_config(raw(location=["Milan", "Italy"]))  # 2 locations x 3 default types
+    assert len(config.scrape_queries) == 6
+
+
+def test_only_empty_location_lists_leave_nothing_to_search():
+    with pytest.raises(ConfigurationError, match="at least one query"):
+        load_and_validate_config(raw(location=[]))
+
+
 def test_harvest_variants_default_to_the_three_tagged_types_with_distinct_ids():
     q = load_and_validate_config(raw()).search_queries[0]
     variants = q.harvest_variants()

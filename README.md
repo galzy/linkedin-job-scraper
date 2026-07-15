@@ -37,7 +37,7 @@ everything here.
 - `search_queries` (array, required) — one or more searches, each with:
   - `keywords` (string, required) — a boolean expression of `OR`, `AND`, and parentheses. LinkedIn
     matches it against the **whole posting**, not just the title (see [How it works](#how-it-works)).
-  - `location` (string, required)
+  - `location` (string or array, required) — a list runs one query per location, everything else shared.
   - `distance` (string) — max radius from `location`. Omit for none. Names: `ANY` (same as omitting),
     `KM_0` (the resolved point only), `KM_8`, `KM_16`, `KM_40`, `KM_80`, `KM_160`.
   - `timespan` (string) — how recent. Names: `DAY`, `WEEK`, `MONTH`, `ANY`.

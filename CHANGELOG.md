@@ -5,6 +5,9 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
 ## [Unreleased]
 
 ### Added
+- A list `location` on a `search_queries` entry. The entry fans into one query per location, sharing
+  its keywords and filters, so the config need not repeat them once per place. A string location still
+  means a single query.
 - Duplicate flagging. LinkedIn mints a fresh URL each time a company reposts a role or fans one out across
   cities, so one job lands as several `jobs_raw` rows. Two new columns mark them without merging anything, so
   every listing keeps its own `is_open`/`location`/`date`. `dup_group` is the posting's identity — its title

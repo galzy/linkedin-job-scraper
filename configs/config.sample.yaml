@@ -25,8 +25,9 @@ search_queries:
     # type is read from which variant surfaced it. [] or omit harvests and keeps all three.
     # Values: on_site, remote, hybrid.
     workplace_type: [remote, hybrid]
+  # A list location fans this entry into one query per location, sharing everything else.
   - keywords: *narrow
-    location: Ireland
+    location: [Ireland, Netherlands]
     <<: *away
 
 title_exclude: [senior, manager, intern]

@@ -205,6 +205,21 @@ class Config(BaseModel):
         """The queries actually fetched: each search fanned out into one variant per keep-list type."""
         return [variant for query in self.search_queries for variant in query.harvest_variants()]
 
+    @field_validator("search_queries", mode="before")
+    @classmethod
+    def _expand_locations(cls, v):
+        """Fan a query whose ``location`` is a list into one otherwise-identical query per location."""
+        if not isinstance(v, list):
+            return v
+        expanded = []
+        for entry in v:
+            locations = entry.get("location") if isinstance(entry, dict) else None
+            if isinstance(locations, list):
+                expanded.extend({**entry, "location": location} for location in locations)
+            else:
+                expanded.append(entry)
+        return expanded
+
     @field_validator("title_exclude", "title_include", "company_exclude", mode="before")
     @classmethod
     def _flatten_groups(cls, v):

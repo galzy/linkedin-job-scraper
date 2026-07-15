@@ -76,7 +76,7 @@ SAMPLE = PROJECT_ROOT / "configs" / "config.sample.yaml"
 
 @pytest.mark.parametrize(
     ("command", "args"),
-    [("recheck_relevance", [SAMPLE]), ("refresh", [SAMPLE]), ("status", [])],
+    [("recompute", [SAMPLE]), ("refresh", [SAMPLE]), ("status", [])],
 )
 def test_stored_job_commands_bail_without_a_db(command, args, tmp_path, monkeypatch):
     """With no database, they warn and return rather than creating an empty one."""
@@ -89,6 +89,18 @@ def test_stored_job_commands_bail_without_a_db(command, args, tmp_path, monkeypa
     getattr(cli, command)(*args)
 
     assert not db.exists()
+
+
+def test_recompute_dispatches_to_its_handler(monkeypatch):
+    from linkedin_scraper import cli
+
+    called = []
+    monkeypatch.setattr(cli, "recompute", lambda config: called.append(config))
+    monkeypatch.setattr(sys, "argv", ["linkedin_scraper", "recompute"])
+
+    cli.main()
+
+    assert called == [cli.CONFIG_PATH]
 
 
 def test_init_config_writes_a_starter_and_refuses_to_overwrite(tmp_path):

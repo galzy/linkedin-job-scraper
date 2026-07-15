@@ -5,6 +5,18 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
 ## [Unreleased]
 
 ### Added
+- Duplicate flagging. LinkedIn mints a fresh URL each time a company reposts a role or fans one out across
+  cities, so one job lands as several `jobs_raw` rows. Two new columns mark them without merging anything, so
+  every listing keeps its own `is_open`/`location`/`date`. `dup_group` is the posting's identity — its title
+  and company, lowercased and trimmed (not its description, which is `NULL` until fetched and reworded on
+  reposts, so keying on it would split true duplicates rather than merge them). It is a generated column, so
+  SQLite keeps it in step with the two source columns for free. `dup_count` is how many *other* kept (relevant,
+  not closed) rows share the group — `0` for a lone posting — recomputed by `refresh_dup_counts` at the end
+  of each run, once relevance and open-status have settled. So `WHERE dup_count = 0` on `jobs_filtered` drops
+  the repeats; on the current database ~300 of ~1,260 kept rows carry a twin, a 16% shorter list once
+  collapsed. (The two columns were added to the existing database by a one-off `ALTER TABLE`, then `dup_count`
+  filled on the next run; new databases get them from the model.) The `recompute` command triggers the same
+  recount after re-judging relevance, since that moves the kept set.
 - Description language. `is_english` on `jobs_raw` flags whether a fetched description reads as English — a
   rough proxy for a role open to non-local candidates, since a local-language posting almost always wants that
   language even when it's remote. Judged by `langdetect` (seeded for determinism) the moment a description is

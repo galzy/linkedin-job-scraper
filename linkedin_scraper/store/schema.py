@@ -1,5 +1,6 @@
 """The SQLite tables as declarative models. Operations over them live in ``db.py``."""
 
+from sqlalchemy import Computed
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
 from linkedin_scraper.constants import (
@@ -42,6 +43,9 @@ class JobRow(SqlBase):
     is_relevant: Mapped[bool | None] = mapped_column(default=None)  # NULL until refresh_relevance first judges it
     is_open: Mapped[bool | None] = mapped_column(default=None)  # NULL until first verified against the posting page
     last_verified: Mapped[str | None] = mapped_column(default=None)  # when is_open was last checked
+    # A posting's identity for spotting duplicates: its title and company, normalized.
+    dup_group: Mapped[str] = mapped_column(Computed("lower(trim(title)) || ' @ ' || lower(trim(company))"))
+    dup_count: Mapped[int | None] = mapped_column(default=None)  # other kept rows sharing dup_group; NULL until counted
 
 
 class QueryRow(SqlBase):

@@ -247,6 +247,32 @@ class JobsDb:
 
         return len(updates)
 
+    def refresh_dup_counts(self) -> int:
+        """Recount how many other kept rows share each ``dup_group``, writing dup_count on every row.
+
+        Kept means relevant and not closed, so a kept row's dup_count is how many other kept rows are the same
+        posting under a different URL — 0 when it stands alone. Only changed rows are written; returns how many.
+        Run after relevance and open-status settle.
+        """
+        with self.engine.begin() as conn:
+            sizes = dict(
+                conn.execute(
+                    select(JobRow.dup_group, func.count())
+                    .where(JobRow.is_relevant.is_(True), JobRow.is_open.isnot(False))
+                    .group_by(JobRow.dup_group)
+                ).all()
+            )
+            others = {group: count - 1 for group, count in sizes.items()}  # the group minus the row itself
+            updates = [
+                {"url": url, "dup_count": others.get(group, 0)}
+                for url, group, current in conn.execute(select(JobRow.job_url, JobRow.dup_group, JobRow.dup_count))
+                if others.get(group, 0) != current
+            ]
+            if updates:
+                _update_jobs_by_url(conn, ["dup_count"], updates)
+        logger.debug(f"Recomputed dup_count on {len(updates):,} rows")
+        return len(updates)
+
     def upsert_queries(self, queries: list[SearchQuery], run_ts: str) -> None:
         """Record every query the run used, keeping each one's first_used and advancing last_used."""
         # Dedup by id: two identical queries in one config would hit the same row twice in one upsert.

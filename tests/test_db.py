@@ -189,6 +189,49 @@ def test_the_filtered_view_hides_the_rows_the_filters_reject(db):
     assert len(rows(db, "title")) == 2  # the raw row is still there to audit
 
 
+def test_dup_group_normalizes_title_and_company_across_urls(db):
+    """The generated dup_group collapses the same posting under different URLs, casing, and spacing."""
+    db.insert_jobs(
+        [
+            job(title="Engineer", company="ACME", job_url="https://x/1/", location="Berlin"),
+            job(title="engineer ", company=" acme", job_url="https://x/2/", location="London"),  # same, unnormalized
+            job(title="Chef", company="ACME", job_url="https://x/3/"),
+        ]
+    )
+    groups = dict(rows(db, "job_url", "dup_group"))
+    assert groups["https://x/1/"] == groups["https://x/2/"] != groups["https://x/3/"]
+
+
+def test_refresh_dup_counts_counts_other_kept_rows_sharing_a_posting(db):
+    """dup_count is how many other kept rows share the posting; a lone posting is 0."""
+    db.insert_jobs(
+        [
+            job(title="Engineer", job_url="https://x/1/", location="Berlin"),
+            job(title="Engineer", job_url="https://x/2/", location="London"),
+            job(title="Chef", job_url="https://x/3/"),
+        ]
+    )
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    assert all(n is None for (n,) in rows(db, "dup_count"))  # NULL until counted
+
+    db.refresh_dup_counts()
+    expected = {"https://x/1/": 1, "https://x/2/": 1, "https://x/3/": 0}
+    assert dict(rows(db, "job_url", "dup_count")) == expected
+    assert dict(rows(db, "job_url", "dup_count", table="jobs_filtered")) == expected  # the view carries it
+
+
+def test_refresh_dup_counts_counts_only_the_kept_set(db):
+    """A closed or irrelevant twin drops out of the count; run the pass again to settle it."""
+    db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/"), job(job_url="https://x/3/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_dup_counts()
+    assert {n for (_, n) in rows(db, "job_url", "dup_count")} == {2}  # each of three shares with the other two
+
+    db.record_postings([job(job_url="https://x/3/", is_open=False)])  # one twin closes
+    db.refresh_dup_counts()
+    assert dict(rows(db, "job_url", "dup_count")) == {"https://x/1/": 1, "https://x/2/": 1, "https://x/3/": 1}
+
+
 def test_record_postings_fills_the_matching_row(db):
     db.insert_jobs([job(), job(job_url="https://x/2/")])
     assert db.record_postings([job(job_description="Build things.")]) == {"described": 1, "checked": 0, "closed": 0}

@@ -87,7 +87,7 @@ uv run linkedin-scraper scrape configs/other.yaml --max-pages 2 # another config
 | --- | --- |
 | `scrape [config] [--max-pages N]` | Scrape, filter, and store jobs, then refresh the relevant ones — fetching descriptions and re-checking open-status. |
 | `init-config <path>` | Write a starter config from the sample. Refuses to overwrite an existing file. |
-| `recheck-relevance [config]` | Re-apply a config's filters to every stored job, flipping `is_relevant` — a filter edit's effect without waiting for the next scrape. |
+| `recompute [config]` | Re-derive a config's verdicts over every stored job — flipping `is_relevant`, then recounting `dup_count` for the groups that shift — a filter edit's effect without waiting for the next scrape. |
 | `refresh [config] [--recheck-days N]` | Fetch missing data and re-check open-status for stored relevant jobs: anything still lacking a description or an open/closed verdict is fetched on sight; the rest are re-checked once older than N days (default 7) and not verified since. Uses the config's `http` settings only. |
 | `status` | Print the last run — when, how it ended, its counts — and the stored-job totals. |
 
@@ -129,13 +129,19 @@ Every run writes each job it scrapes to **`jobs_raw`** — raw in that it holds 
 | `is_english` | Whether the description reads as English — a rough proxy for a role open to non-local candidates. `1`/`0` once a description is fetched; `NULL` while none exists or the text is too short to judge. |
 | `is_open` | Whether the posting still accepts applications. Starts `1` (presumed open — it just surfaced in search), then a posting-page fetch settles it; `0` once it closes. `NULL` only on rows stored before this was tracked. |
 | `last_verified` | When `is_open` was last confirmed by fetching the page; `NULL` until that first fetch (the opening presumption is not a check). |
+| `dup_group` | The posting's identity across the URLs LinkedIn mints for reposts and per-city fan-out: its title and company, lowercased and trimmed. Generated, so it never drifts. |
+| `dup_count` | How many *other* kept (relevant, not-closed) rows share this `dup_group`; `0` for a lone posting. `NULL` until first counted, then recomputed every run. |
 
-Day to day, query the **`jobs_filtered`** view — `jobs_raw` with the rejected postings, and any that
-have since closed, hidden (a not-yet-checked job stays visible). Reach for `jobs_raw` itself to audit:
+Day to day, query the **`jobs_filtered`** view — `jobs_raw` minus the rejected and closed postings (a
+not-yet-checked job stays visible). One job can land under several URLs (reposts, per-city fan-out), so
+each kept row carries `dup_count`: `WHERE dup_count = 0` drops the repeats, `ORDER BY dup_group` clusters
+them. Reach for `jobs_raw` to audit:
 
 ```sql
--- what the filters keep
-SELECT * FROM jobs_filtered;
+-- the filters' keepers with no duplicate repost or per-city fan-out
+SELECT title, company, location FROM jobs_filtered WHERE dup_count = 0;
+-- the postings that repeat most, one row per group
+SELECT title, company, dup_count FROM jobs_filtered WHERE dup_count > 0 GROUP BY dup_group ORDER BY dup_count DESC;
 -- kept jobs whose description reads as English (likelier to take a non-local candidate)
 SELECT title, company, country FROM jobs_filtered WHERE is_english = 1;
 -- what they threw away: do these read like postings you really don't want?
@@ -168,7 +174,7 @@ kept or not, is what stops the rejected ones being re-scraped.
 **Relevance is cached, not intrinsic.** `is_relevant` answers a question about the *config*, not the
 job, so editing the config stales every stored verdict. Each run re-decides the whole table, not just
 the jobs it scraped, and rejected rows stay in `jobs_raw` so you can audit what the filters threw
-away. (`recheck-relevance` does this without scraping.)
+away. (`recompute` does this without scraping.)
 
 **Descriptions are backfilled.** Each run fetches descriptions for every relevant job that still
 lacks one, not only newly-seen ones. A failed fetch (timeout, 429) leaves `job_description` `NULL`
@@ -247,7 +253,7 @@ after ten days. Set `LINKEDIN_SCRAPER_LOG_DIR` to write the logs somewhere else.
 configs/
   config.sample.yaml     committed template — copy to configs/config.yaml
   config.yaml            your input (git-ignored, like any config here)
-linkedin_jobs.db         output: jobs_raw, jobs_filtered, and the provenance tables
+linkedin_jobs.db         output: jobs_raw, the jobs_filtered view, and the provenance tables
 logs/2026-07-08.log      diagnostics, one file per day
 tests/                   pytest suite
 linkedin_scraper/

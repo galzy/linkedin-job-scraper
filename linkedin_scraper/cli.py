@@ -47,8 +47,8 @@ def init_config(path: str | Path) -> None:
     print(f"wrote {dest} from {SAMPLE_CONFIG.name}; edit it, then scrape")
 
 
-def recheck_relevance(config_file: str | Path) -> None:
-    """Re-apply a config's filters to every stored job, no scraping."""
+def recompute(config_file: str | Path) -> None:
+    """Re-derive a config's verdicts over every stored job — relevance, then duplicate counts — no scraping."""
     init_logging()
     config = load_config(config_file)
     if not _has_db():
@@ -56,6 +56,7 @@ def recheck_relevance(config_file: str | Path) -> None:
     db = JobsDb(path=str(DB_PATH))
     db.create_schema()
     db.refresh_relevance(predicate=relevance_predicate(config))
+    db.refresh_dup_counts()  # relevance moved the kept set, so the per-group counts must follow
     db.close()
 
 
@@ -131,8 +132,11 @@ def build_parser() -> argparse.ArgumentParser:
     init = sub.add_parser("init-config", help="write a starter config from the sample")
     init.add_argument("path", help="where to write the new config")
 
-    recheck = sub.add_parser("recheck-relevance", help="re-apply a config's filters to stored jobs")
-    recheck.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config whose filters to apply")
+    recompute_cmd = sub.add_parser(
+        "recompute",
+        help="re-derive stored verdicts (relevance and duplicate counts) from a config, no scraping",
+    )
+    recompute_cmd.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config whose filters to apply")
 
     refresh_cmd = sub.add_parser("refresh", help="fetch missing descriptions and re-check open-status for stored jobs")
     refresh_cmd.add_argument("config", nargs="?", default=CONFIG_PATH, help="the config providing HTTP settings")
@@ -156,8 +160,8 @@ def main() -> None:
             run_scrape(args.config, max_pages=args.max_pages)
         elif args.command == "init-config":
             init_config(args.path)
-        elif args.command == "recheck-relevance":
-            recheck_relevance(args.config)
+        elif args.command == "recompute":
+            recompute(args.config)
         elif args.command == "refresh":
             refresh(args.config, args.recheck_days)
         elif args.command == "status":

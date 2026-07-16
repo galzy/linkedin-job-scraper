@@ -140,6 +140,17 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
 - `CHANGELOG.md`; provenance comment in `pyproject.toml`; example config, layout and tuning docs in README.
 
 ### Changed
+- Dependency floors are loosened to the earliest versions that actually work on Python 3.14 — the
+  compiled ones bound by 3.14 support (pydantic 2.12, SQLAlchemy 2.0.41, PyYAML 6.0.3, typer 0.20),
+  the pure-Python ones far looser (rich 12.3.0, beautifulsoup4 4.12.0, requests 2.31.0, pycountry
+  22.3.5, geonamescache 1.2.0) — instead of whatever was newest when each pin was written. Proven by
+  running the suite with every direct dependency at its floor (`uv pip install --resolution
+  lowest-direct`). Python 3.14+ stays: the code would run on 3.11 with two annotation fixes (made
+  anyway — `-> Job`/`-> HttpClient` on methods of those classes only import under 3.14's lazy
+  annotations, and are the more precise `-> Self` now), but nothing enforces the wider claim, so it
+  would rot silently. The console log sink strips and re-adds each line's trailing newline instead of
+  relying on rich 15 to keep it — under the old `rich>=13` floor, rich 13/14 rendered every log line
+  glued to the previous one.
 - The project is renamed to `linkedin_job_scraper`. The console script is now `linkedin-job-scraper`
   (was `linkedin-scraper`), the module runs as `python -m linkedin_job_scraper`, and the log-directory
   override reads `LINKEDIN_JOB_SCRAPER_LOG_DIR` (was `LINKEDIN_SCRAPER_LOG_DIR`) — update any cron job,

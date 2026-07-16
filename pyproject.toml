@@ -8,17 +8,17 @@ license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.14"
 dependencies = [
-    "requests>=2.34.2,<3.0.0",
-    "beautifulsoup4>=4.15.0,<5.0.0",
+    "requests>=2.31.0,<3.0.0",
+    "beautifulsoup4>=4.12.0,<5.0.0",
     "loguru>=0.7.3,<0.8.0",
-    "pydantic>=2.13.4,<3.0.0",
-    "sqlalchemy>=2.0.51,<2.1",
-    "pyyaml>=6.0,<7.0",
-    "pycountry>=26.2.16,<27.0.0",
-    "geonamescache>=3.0,<4.0",
+    "pydantic>=2.12,<3.0.0",
+    "sqlalchemy>=2.0.41,<2.1",
+    "pyyaml>=6.0.3,<7.0",
+    "pycountry>=22.3.5,<27.0.0",
+    "geonamescache>=1.2.0,<4.0",
     "langdetect>=1.0.9,<2.0.0",
-    "typer>=0.26,<0.27",
-    "rich>=13.0,<16.0",
+    "typer>=0.20,<0.27",
+    "rich>=12.3.0,<16.0",
 ]
 
 [project.scripts]
@@ -26,7 +26,7 @@ linkedin-job-scraper = "linkedin_job_scraper.cli:main"
 
 [dependency-groups]
 dev = [
-    "pytest>=9.0,<10.0",
+    "pytest>=8.4.2,<10.0",
     "ruff>=0.15.21,<0.16.0",
 ]
 

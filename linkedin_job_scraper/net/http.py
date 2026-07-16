@@ -54,7 +54,7 @@ class RateLimiter:
         self._next_allowed = time.monotonic()
 
     def _interval(self) -> float:
-        """A gap either side of the mean, so the request timing carries no fingerprint."""
+        """A gap either side of the mean, so requests don't fall into lockstep."""
         return self._mean_interval * random.uniform(1.0 - self._jitter, 1.0 + self._jitter)
 
     def acquire(self) -> None:
@@ -181,7 +181,7 @@ class HttpClient:
         return Fetch(None)
 
     def _backoff(self, attempt: int) -> float:
-        """Exponential backoff capped at ``backoff_max``, plus anti-fingerprint jitter."""
+        """Exponential backoff capped at ``backoff_max``, plus jitter to desynchronize retries."""
         base = min(self._backoff_max, self._backoff_base**attempt)
         return base + random.uniform(0, self._backoff_jitter)
 

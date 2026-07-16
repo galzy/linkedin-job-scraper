@@ -225,13 +225,13 @@ conservative:
 | field | default | purpose |
 |---|---|---|
 | `max_requests_per_minute` | `20` | Global cap across all threads. **The main safety dial.** |
-| `rate_jitter` | `0.4` | How far each gap between requests strays from the mean (±40%). Even spacing is a bot tell; symmetric, so it does not change the rate above. Must be `>= 0` and `< 1`. |
+| `rate_jitter` | `0.4` | How far each gap between requests strays from the mean (±40%). Spreads requests instead of firing them in lockstep; symmetric, so it does not change the rate above. Must be `>= 0` and `< 1`. |
 | `search_workers` | `3` | Parallel search-page fetches (still under the rate cap). |
 | `description_workers` | `3` | Parallel description fetches. |
 | `timeout` | `20.0` | Per-request connect+read timeout. Higher = fewer false-timeout retries. |
 | `retries` | `5` | Attempts per URL before the page is skipped. A 4xx other than 403/429 is not retried; a throttle consumes an attempt. |
 | `backoff_base` / `backoff_max` | `2.0` / `60.0` | Exponential backoff between retries, capped. Applies to timeouts and network errors; throttles sleep per `retry_after_cap` instead. |
-| `backoff_jitter` | `2.0` | Random jitter added to each backoff (breaks the retry fingerprint). |
+| `backoff_jitter` | `2.0` | Random jitter added to each backoff, so parallel retries don't all return at once. |
 | `retry_after_cap` | `120.0` | Ceiling on the post-throttle sleep, and the full sleep when the response carries no usable `Retry-After` (a 403 or 999 never does). |
 
 If `Throttled` starts showing in the log, LinkedIn is turning you away — HTTP 429, 403, or the 999

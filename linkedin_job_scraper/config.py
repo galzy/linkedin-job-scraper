@@ -157,8 +157,8 @@ class HttpConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
     max_requests_per_minute: float = 20  # global cap across search + description phases
-    # How far each request gap strays from the mean, as a fraction of it. Perfectly even
-    # spacing is a bot tell; jitter hides it without changing the rate above.
+    # How far each request gap strays from the mean, as a fraction of it. Spreads the
+    # requests instead of firing them in lockstep, without changing the rate above.
     rate_jitter: float = 0.4
     search_workers: int = 3  # parallel search-page fetches (behind the shared cap)
     description_workers: int = 3  # parallel job-description fetches (behind the shared cap)
@@ -166,7 +166,7 @@ class HttpConfig(BaseModel):
     retries: int = 5  # attempts per URL before giving up; a 429 consumes one
     backoff_base: float = 2.0  # exponential backoff base between retries
     backoff_max: float = 60.0  # cap on a single backoff sleep (seconds)
-    backoff_jitter: float = 2.0  # random jitter added to each backoff, breaks the fingerprint
+    backoff_jitter: float = 2.0  # random jitter added to each backoff, so parallel retries don't sync up
     retry_after_cap: float = 120.0  # most we'll honour from a 429 Retry-After header (seconds)
 
     @field_validator("max_requests_per_minute")

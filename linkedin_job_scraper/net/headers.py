@@ -1,4 +1,4 @@
-"""The browser fingerprint the scraper wears: request headers and the UA profiles behind them."""
+"""Request headers and the browser profiles behind them."""
 
 import random
 from datetime import date
@@ -26,7 +26,7 @@ def _chrome(major: int, ua_platform: str, ch_platform: str) -> dict[str, str]:
 
 
 # Chrome 150 / Safari 26 were stable at the anchor; the majors are projected forward from
-# there so an idle checkout doesn't wear a stale UA, which fingerprints worse than a common one.
+# there so an idle checkout doesn't send a years-old UA.
 _ANCHOR = date(2026, 7, 1)
 _ANCHOR_CHROME = 150
 _DAYS_PER_MAJOR = 32  # Chrome ships a stable major ~monthly; bias to lag, never lead

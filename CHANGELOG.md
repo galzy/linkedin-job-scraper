@@ -4,6 +4,8 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
 
 ## [Unreleased]
 
+## [v0.4.0 ]
+
 ### Added
 - A list `location` on a `search_queries` entry. The entry fans into one query per location, sharing
   its keywords and filters, so the config need not repeat them once per place. A string location still
@@ -374,11 +376,3 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
 ### Notes
 - Released under the MIT License (`LICENSE`) as original work; the copied upstream description
   parser was rewritten first. Upstream itself ships no license.
-
-### Ideas
-Not planned, not scheduled — parked here rather than as comments in `main.py`.
-- New columns: is the application still open? Is it hybrid/remote/on-site/none? What language?
-- Stop letting LinkedIn do the remote filtering.
-- Separate keyword filtering for the post body, and complex filters combining several fields.
-- A column of the description filter words a job matched, i.e. tags. Would need a description-body
-  keyword filter first.

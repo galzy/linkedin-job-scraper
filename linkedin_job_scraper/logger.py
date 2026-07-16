@@ -22,8 +22,9 @@ def init_logging() -> None:
     logger.remove()  # drop loguru's default handler so nothing is logged twice
     # Route console logs through the Rich console so a live spinner and log lines never fight.
     # from_ansi turns loguru's colorized output into Rich text, which also keeps piped output plain.
+    # print re-adds the stripped newline itself: from_ansi in rich < 15 silently drops a trailing one.
     logger.add(
-        lambda m: console.print(Text.from_ansi(m), end="", soft_wrap=True),
+        lambda m: console.print(Text.from_ansi(m.rstrip("\n")), soft_wrap=True),
         format=LOG_FORMAT,
         level=LOG_LEVEL_CONSOLE,
         colorize=True,

@@ -292,13 +292,15 @@ The suite hits no network — `db.py` is exercised against an in-memory SQLite d
 
 ### Origin
 
-Forked from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) around October 2024,
-at commit [`8929765`](https://github.com/cwwmbm/linkedinscraper/commit/8929765f1cda26f3a1534813b63887e8f741aae8)
-(upstream has no release tags, so the SHA is the only pin). Diverged since: uv-managed, Python 3.14,
-code moved into a package, Pydantic config validation, a rate-limited client with parallel
-description fetches, and upstream's Flask UI (`app.py`) dropped.
+This project started in October 2024 as a fork of
+[cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper), at commit
+[`8929765`](https://github.com/cwwmbm/linkedinscraper/commit/8929765f1cda26f3a1534813b63887e8f741aae8)
+(upstream has no release tags, so the SHA is the only pin), and was rewritten from there:
+uv-managed, Python 3.14, code moved into a package, Pydantic config validation, a rate-limited
+client with parallel description fetches, and upstream's Flask UI (`app.py`) dropped. None of
+upstream's code remains — the last routine still carrying its shape, a description parser, was
+reimplemented before the first release.
 
 > **License**
-> Released under the [MIT License](LICENSE) as original work, with thanks to `cwwmbm` for the
-> original project this began from. Upstream itself ships no license. See also the
-> [DISCLAIMER](DISCLAIMER.md).
+> Released under the [MIT License](LICENSE) as the author's own work — with thanks to `cwwmbm`,
+> whose project this one started from. See also the [DISCLAIMER](DISCLAIMER.md).

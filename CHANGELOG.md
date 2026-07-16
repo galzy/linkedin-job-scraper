@@ -1,6 +1,6 @@
 # Changelog
 
-Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @ `8929765` (2024-08-17).
+Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @ `8929765` (2024-08-17), rewritten since.
 
 ## [Unreleased]
 
@@ -51,8 +51,8 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
   `scrape_jobs` stages through a callback rather than returning its jobs in memory, so `BlockedError` no
   longer carries a payload. Within-run dedupe moved from `filters.remove_duplicates` (removed) to the staging
   read, keyed on `job_url`.
-- `LICENSE` (MIT) and `DISCLAIMER.md`. The one file still carrying upstream's copied description
-  parser (`parse_job_description`) was rewritten first, so the project is wholly original work.
+- `LICENSE` (MIT) and `DISCLAIMER.md`. The last routine carried over from upstream, the description
+  parser (`parse_job_description`), was reimplemented first, so the project is wholly the author's own.
 - A `status` subcommand: the last run — timestamps, completed or blocked, its counts — and the stored
   totals (jobs, relevant, missing descriptions), via two new `JobsDb` readers (`last_run`, `totals`).
   The morning-after check on a cron box, without opening the DB.
@@ -374,5 +374,5 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
   Tables created before this change keep their `id` column and still append correctly.
 
 ### Notes
-- Released under the MIT License (`LICENSE`) as original work; the copied upstream description
-  parser was rewritten first. Upstream itself ships no license.
+- Released under the MIT License (`LICENSE`) as the author's own work; the last routine carried over
+  from upstream, a description parser, was reimplemented first.

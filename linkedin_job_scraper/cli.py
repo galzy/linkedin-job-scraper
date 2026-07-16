@@ -11,15 +11,15 @@ import typer
 from loguru import logger
 from sqlalchemy.exc import SQLAlchemyError
 
-from linkedin_scraper.config import ConfigurationError, load_config
-from linkedin_scraper.console import live_status
-from linkedin_scraper.constants import CONFIG_PATH, CONFIGS_PATH, DB_PATH, MAX_PAGES, PROJECT_ROOT, RECHECK_DAYS
-from linkedin_scraper.filters import relevance_predicate
-from linkedin_scraper.logger import init_logging
-from linkedin_scraper.main import main as run_scrape
-from linkedin_scraper.net.http import HttpClient
-from linkedin_scraper.scrape.scraping import BlockedError, NoFilteringSessionError, fetch_postings
-from linkedin_scraper.store.db import JobsDb
+from linkedin_job_scraper.config import ConfigurationError, load_config
+from linkedin_job_scraper.console import live_status
+from linkedin_job_scraper.constants import CONFIG_PATH, CONFIGS_PATH, DB_PATH, MAX_PAGES, PROJECT_ROOT, RECHECK_DAYS
+from linkedin_job_scraper.filters import relevance_predicate
+from linkedin_job_scraper.logger import init_logging
+from linkedin_job_scraper.main import main as run_scrape
+from linkedin_job_scraper.net.http import HttpClient
+from linkedin_job_scraper.scrape.scraping import BlockedError, NoFilteringSessionError, fetch_postings
+from linkedin_job_scraper.store.db import JobsDb
 
 SAMPLE_CONFIG = CONFIGS_PATH / "config.sample.yaml"
 

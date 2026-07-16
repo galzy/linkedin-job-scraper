@@ -5,7 +5,7 @@ from collections.abc import Callable
 
 from loguru import logger
 
-from linkedin_scraper.config import Config, WorkplaceType
+from linkedin_job_scraper.config import Config, WorkplaceType
 
 _TAGGED = {WorkplaceType.ON_SITE.value, WorkplaceType.REMOTE.value, WorkplaceType.HYBRID.value}
 

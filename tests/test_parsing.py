@@ -3,8 +3,8 @@ from pathlib import Path
 from bs4 import BeautifulSoup
 from loguru import logger
 
-from linkedin_scraper.constants import NO_DESCRIPTION, PAGE_SIZE
-from linkedin_scraper.scrape.parsing import count_cards, has_job_cards, parse_job_description, parse_page_jobs
+from linkedin_job_scraper.constants import NO_DESCRIPTION, PAGE_SIZE
+from linkedin_job_scraper.scrape.parsing import count_cards, has_job_cards, parse_job_description, parse_page_jobs
 
 RESULTS_PAGE = Path(__file__).parent / "fixtures" / "results_page.html"
 

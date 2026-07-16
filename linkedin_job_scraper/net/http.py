@@ -11,8 +11,8 @@ from loguru import logger
 from requests.adapters import HTTPAdapter
 from requests.exceptions import RequestException
 
-from linkedin_scraper.config import HttpConfig
-from linkedin_scraper.net.headers import session_headers
+from linkedin_job_scraper.config import HttpConfig
+from linkedin_job_scraper.net.headers import session_headers
 
 
 class Throttled(RequestException):

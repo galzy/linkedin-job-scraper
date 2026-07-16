@@ -3,7 +3,7 @@
 from langdetect import DetectorFactory, detect
 from langdetect.lang_detect_exception import LangDetectException
 
-from linkedin_scraper.constants import NO_DESCRIPTION
+from linkedin_job_scraper.constants import NO_DESCRIPTION
 
 DetectorFactory.seed = 0  # pin langdetect's RNG so a description always classifies the same way
 

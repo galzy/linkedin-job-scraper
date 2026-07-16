@@ -1,5 +1,5 @@
 [project]
-name = "linkedin_scraper"
+name = "linkedin_job_scraper"
 version = "0.3.0"
 description = "Scrapes LinkedIn job listings, filters them by keywords and stores them in a DB."
 authors = [{ name = "Gal Ziv", email = "galzy@users.noreply.github.com" }]
@@ -22,7 +22,7 @@ dependencies = [
 ]
 
 [project.scripts]
-linkedin-scraper = "linkedin_scraper.cli:main"
+linkedin-job-scraper = "linkedin_job_scraper.cli:main"
 
 [dependency-groups]
 dev = [

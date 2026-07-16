@@ -3,7 +3,7 @@
 from sqlalchemy import Computed
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-from linkedin_scraper.constants import (
+from linkedin_job_scraper.constants import (
     TABLE_JOB_QUERIES,
     TABLE_JOBS_RAW,
     TABLE_QUERIES,

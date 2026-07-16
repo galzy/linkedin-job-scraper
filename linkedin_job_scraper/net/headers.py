@@ -5,7 +5,7 @@ from datetime import date
 
 from loguru import logger
 
-from linkedin_scraper.constants import SEARCH_REFERER
+from linkedin_job_scraper.constants import SEARCH_REFERER
 
 
 def _chrome(major: int, ua_platform: str, ch_platform: str) -> dict[str, str]:

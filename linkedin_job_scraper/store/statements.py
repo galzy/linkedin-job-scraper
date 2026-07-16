@@ -3,9 +3,9 @@
 from sqlalchemy import Connection, bindparam, case, update
 from sqlalchemy.dialects.sqlite import Insert, insert
 
-from linkedin_scraper.geo import country_of
-from linkedin_scraper.job import Job
-from linkedin_scraper.store.schema import JobQueryRow, JobRow, QueryRow, StagingRow
+from linkedin_job_scraper.geo import country_of
+from linkedin_job_scraper.job import Job
+from linkedin_job_scraper.store.schema import JobQueryRow, JobRow, QueryRow, StagingRow
 
 
 def _row(job: Job, seen_at: str, countries: frozenset[str]) -> dict:

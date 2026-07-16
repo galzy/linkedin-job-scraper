@@ -7,11 +7,11 @@ from typing import NamedTuple
 
 from loguru import logger
 
-from linkedin_scraper.config import Config, SearchQuery, WorkplaceType
-from linkedin_scraper.constants import MAX_PAGES, SESSION_DRAWS
-from linkedin_scraper.job import Job
-from linkedin_scraper.net.http import HttpClient
-from linkedin_scraper.scrape.parsing import (
+from linkedin_job_scraper.config import Config, SearchQuery, WorkplaceType
+from linkedin_job_scraper.constants import MAX_PAGES, SESSION_DRAWS
+from linkedin_job_scraper.job import Job
+from linkedin_job_scraper.net.http import HttpClient
+from linkedin_job_scraper.scrape.parsing import (
     count_cards,
     has_job_cards,
     parse_job_description,

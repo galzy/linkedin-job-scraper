@@ -7,11 +7,11 @@ import yaml
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from linkedin_scraper.config import SearchQuery, load_and_validate_config
-from linkedin_scraper.constants import NO_DESCRIPTION
-from linkedin_scraper.geo import searched_countries
-from linkedin_scraper.job import Job
-from linkedin_scraper.store.db import JobsDb
+from linkedin_job_scraper.config import SearchQuery, load_and_validate_config
+from linkedin_job_scraper.constants import NO_DESCRIPTION
+from linkedin_job_scraper.geo import searched_countries
+from linkedin_job_scraper.job import Job
+from linkedin_job_scraper.store.db import JobsDb
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ def pragma(db, statement):
 @contextmanager
 def clock(now):
     """Pin the insert timestamp. Real runs stamp to the second, so two inserts can share one."""
-    with patch("linkedin_scraper.store.db.datetime") as dt:
+    with patch("linkedin_job_scraper.store.db.datetime") as dt:
         dt.now.return_value.isoformat.return_value = now
         yield
 

@@ -14,10 +14,10 @@ committed). Clone the repo, then:
 
 ```
 uv sync
-uv run linkedin-scraper init-config configs/config.yaml    # then edit it — see Configuration
+uv run linkedin-job-scraper init-config configs/config.yaml    # then edit it — see Configuration
 ```
 
-`uv sync` installs the project editable — exposing the `linkedin-scraper` command used below — along
+`uv sync` installs the project editable — exposing the `linkedin-job-scraper` command used below — along
 with the `dev` group (pytest, ruff); a cron box that only runs the scraper wants `uv sync --no-dev`.
 Config files live in `configs/`, which git ignores bar the committed sample, so your searches and
 exclude lists never reach a commit.
@@ -79,8 +79,8 @@ The CLI is a set of subcommands. `scrape` is the one you run on a schedule; the 
 or act on already-stored jobs without re-scraping.
 
 ```
-uv run linkedin-scraper scrape                                  # configs/config.yaml, every query to exhaustion
-uv run linkedin-scraper scrape configs/other.yaml --max-pages 2 # another config, two pages per query
+uv run linkedin-job-scraper scrape                                  # configs/config.yaml, every query to exhaustion
+uv run linkedin-job-scraper scrape configs/other.yaml --max-pages 2 # another config, two pages per query
 ```
 
 | Command | What it does |
@@ -96,9 +96,9 @@ uv run linkedin-scraper scrape configs/other.yaml --max-pages 2 # another config
 ever lowers LinkedIn's own 100-page ceiling, and lives on the command line so no checked-in file can
 silently truncate a real scrape.
 
-Run `linkedin-scraper --install-completion` once for shell tab-completion of commands and options.
+Run `linkedin-job-scraper --install-completion` once for shell tab-completion of commands and options.
 
-`uv run python -m linkedin_scraper` runs the same thing if you'd rather not use the console script.
+`uv run python -m linkedin_job_scraper` runs the same thing if you'd rather not use the console script.
 Either way, `configs/`, `linkedin_jobs.db`, and `logs/` resolve against the repository root rather than
 the working directory, so a cron job or systemd unit needs no `WorkingDirectory` of its own. The exit
 status tells a scheduler how a run ended:
@@ -219,7 +219,7 @@ already scraped are stored first.
 All requests flow through one rate-limited, connection-pooling client. A single shared limiter caps
 the **global** request rate across both the search and description phases, so you can fetch in
 parallel without ever exceeding a safe per-minute rate — concurrency and request rate are decoupled.
-Every field is optional; the defaults (the `HttpConfig` fields in `linkedin_scraper/config.py`) are
+Every field is optional; the defaults (the `HttpConfig` fields in `linkedin_job_scraper/config.py`) are
 conservative:
 
 | field | default | purpose |
@@ -247,10 +247,10 @@ results and you are seeing only the first 1000, so narrow it with `timespan`, `d
 
 #### Logging
 
-Log levels and rotation are constants in `linkedin_scraper/logger.py`: `LOG_LEVEL_CONSOLE` (`INFO`)
+Log levels and rotation are constants in `linkedin_job_scraper/logger.py`: `LOG_LEVEL_CONSOLE` (`INFO`)
 and `LOG_LEVEL_FILE` (`DEBUG`) set what reaches the terminal and the file; `LOG_ROTATION` /
 `LOG_RETENTION` (`00:00` / `10 days`) write one file per day to `logs/YYYY-MM-DD.log` and delete it
-after ten days. Set `LINKEDIN_SCRAPER_LOG_DIR` to write the logs somewhere else.
+after ten days. Set `LINKEDIN_JOB_SCRAPER_LOG_DIR` to write the logs somewhere else.
 
 ### Layout
 
@@ -261,7 +261,7 @@ configs/
 linkedin_jobs.db         output: jobs_raw, the jobs_filtered view, and the provenance tables
 logs/2026-07-08.log      diagnostics, one file per day
 tests/                   pytest suite
-linkedin_scraper/
+linkedin_job_scraper/
   __main__.py            the -m entry point; a shim over cli.py
   cli.py                 the CLI: the Typer app and the subcommands behind it
   main.py                a scrape run end to end: scrape, dedupe, store, filter, refresh

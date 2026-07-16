@@ -1,7 +1,7 @@
 from collections import Counter
 
-from linkedin_scraper.config import load_and_validate_config
-from linkedin_scraper.filters import derive_workplace_types, relevance_predicate
+from linkedin_job_scraper.config import load_and_validate_config
+from linkedin_job_scraper.filters import derive_workplace_types, relevance_predicate
 
 
 def _config(**overrides):

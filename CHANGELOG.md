@@ -140,6 +140,10 @@ Split from [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @
 - `CHANGELOG.md`; provenance comment in `pyproject.toml`; example config, layout and tuning docs in README.
 
 ### Changed
+- The project is renamed to `linkedin_job_scraper`. The console script is now `linkedin-job-scraper`
+  (was `linkedin-scraper`), the module runs as `python -m linkedin_job_scraper`, and the log-directory
+  override reads `LINKEDIN_JOB_SCRAPER_LOG_DIR` (was `LINKEDIN_SCRAPER_LOG_DIR`) — update any cron job,
+  shell profile, or scheduled task that pins the old names.
 - The package is flat. `cli`, `config`, `filters`, `geo`, `job`, and `main` moved out of the deleted
   `app/` layer up to the `linkedin_scraper/` root, beside `constants` and `logger`; the `net`,
   `scrape`, and `store` subpackages moved up intact. Imports drop the meaningless `.app` qualifier.

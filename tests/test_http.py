@@ -4,7 +4,7 @@ import pytest
 from bs4 import BeautifulSoup
 from requests.exceptions import RequestException
 
-from linkedin_scraper.net.http import HttpClient, RateLimiter
+from linkedin_job_scraper.net.http import HttpClient, RateLimiter
 
 
 def make_client(**overrides):
@@ -82,7 +82,7 @@ def test_fetch_gives_up_and_returns_none_after_retries():
 
     client = make_client(retries=3)
     client._session.get = Mock(side_effect=ConnectionError("boom"))
-    with patch("linkedin_scraper.net.http.time.sleep"):  # don't actually sleep through backoff
+    with patch("linkedin_job_scraper.net.http.time.sleep"):  # don't actually sleep through backoff
         result = client.fetch("https://example.com").soup
     assert result is None
     assert client._session.get.call_count == 3
@@ -93,7 +93,7 @@ def test_fetch_does_not_retry_a_4xx():
     requests against the rate limit. LinkedIn 400s on start >= 1000."""
     client = make_client(retries=3)
     client._session.get = Mock(return_value=fake_response(400))
-    with patch("linkedin_scraper.net.http.time.sleep"):
+    with patch("linkedin_job_scraper.net.http.time.sleep"):
         result = client.fetch("https://example.com").soup
     assert result is None
     assert client._session.get.call_count == 1
@@ -104,7 +104,7 @@ def test_fetch_reports_a_removed_resource_as_gone_without_retrying(status):
     """A 404/410 is a removed posting, not a hiccup: no retry, and `gone` lets callers mark it closed."""
     client = make_client(retries=3)
     client._session.get = Mock(return_value=fake_response(status))
-    with patch("linkedin_scraper.net.http.time.sleep"):
+    with patch("linkedin_job_scraper.net.http.time.sleep"):
         result = client.fetch("https://example.com")
     assert result.soup is None and result.gone is True
     assert client._session.get.call_count == 1
@@ -116,7 +116,7 @@ def test_fetch_does_not_flag_a_transient_failure_as_gone():
     resp = fake_response(503)
     resp.raise_for_status = Mock(side_effect=RequestException("boom", response=resp))
     client._session.get = Mock(return_value=resp)
-    with patch("linkedin_scraper.net.http.time.sleep"):
+    with patch("linkedin_job_scraper.net.http.time.sleep"):
         result = client.fetch("https://example.com")
     assert result.soup is None and result.gone is False
 
@@ -127,7 +127,7 @@ def test_a_throttle_is_retried_despite_sitting_outside_the_retryable_range(statu
     must reach the throttle handler and be retried, not fall into the no-retry path."""
     client = make_client(retries=3, retry_after_cap=0.0)
     client._session.get = Mock(return_value=fake_response(status, headers={}))
-    with patch("linkedin_scraper.net.http.time.sleep"):
+    with patch("linkedin_job_scraper.net.http.time.sleep"):
         assert client.fetch("https://example.com").soup is None
     assert client._session.get.call_count == 3
     assert client._throttle_count == 3
@@ -138,7 +138,10 @@ def test_a_5xx_is_still_retried_and_logs_its_status():
     resp = fake_response(503)
     resp.raise_for_status = Mock(side_effect=RequestException("boom", response=resp))
     client._session.get = Mock(return_value=resp)
-    with patch("linkedin_scraper.net.http.time.sleep"), patch("linkedin_scraper.net.http.logger.debug") as debug:
+    with (
+        patch("linkedin_job_scraper.net.http.time.sleep"),
+        patch("linkedin_job_scraper.net.http.logger.debug") as debug,
+    ):
         assert client.fetch("https://example.com").soup is None
     assert client._session.get.call_count == 3
     assert any("HTTP 503" in call.args[0] for call in debug.call_args_list)
@@ -151,7 +154,7 @@ def test_persistent_5xx_slows_the_run_down_like_a_throttle():
     resp = fake_response(503)
     resp.raise_for_status = Mock(side_effect=RequestException("boom", response=resp))
     client._session.get = Mock(return_value=resp)
-    with patch("linkedin_scraper.net.http.time.sleep"):
+    with patch("linkedin_job_scraper.net.http.time.sleep"):
         client.fetch("https://example.com")  # 3 attempts -> trips once
     assert client._throttle_count == 3
     assert limiter._mean_interval == pytest.approx(2.0)
@@ -163,7 +166,7 @@ def test_persistent_5xx_slows_the_run_down_like_a_throttle():
 def test_429_honours_retry_after_and_counts():
     client = make_client(retries=1, retry_after_cap=120.0)
     client._session.get = Mock(return_value=fake_response(429, headers={"Retry-After": "7"}))
-    with patch("linkedin_scraper.net.http.time.sleep") as slept:
+    with patch("linkedin_job_scraper.net.http.time.sleep") as slept:
         result = client.fetch("https://example.com").soup
     assert result is None
     assert client._throttle_count == 1
@@ -174,7 +177,7 @@ def test_429_honours_retry_after_and_counts():
 def test_a_999_authwall_waits_the_cap_since_it_names_no_duration():
     client = make_client(retries=1, retry_after_cap=30.0)
     client._session.get = Mock(return_value=fake_response(999, headers={}))
-    with patch("linkedin_scraper.net.http.time.sleep") as slept:
+    with patch("linkedin_job_scraper.net.http.time.sleep") as slept:
         assert client.fetch("https://example.com").soup is None
     assert any(call.args and call.args[0] == 30.0 for call in slept.call_args_list)
 
@@ -182,7 +185,7 @@ def test_a_999_authwall_waits_the_cap_since_it_names_no_duration():
 def test_429_retry_after_is_capped():
     client = make_client(retries=1, retry_after_cap=5.0)
     client._session.get = Mock(return_value=fake_response(429, headers={"Retry-After": "999"}))
-    with patch("linkedin_scraper.net.http.time.sleep") as slept:
+    with patch("linkedin_job_scraper.net.http.time.sleep") as slept:
         client.fetch("https://example.com")
     assert any(call.args and call.args[0] == 5.0 for call in slept.call_args_list)
 

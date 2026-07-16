@@ -3,8 +3,8 @@
 from bs4 import BeautifulSoup
 from loguru import logger
 
-from linkedin_scraper.constants import JOB_VIEW_URL, NO_DESCRIPTION
-from linkedin_scraper.job import Job
+from linkedin_job_scraper.constants import JOB_VIEW_URL, NO_DESCRIPTION
+from linkedin_job_scraper.job import Job
 
 
 def _card_text(tag) -> str:

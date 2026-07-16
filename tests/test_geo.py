@@ -1,6 +1,6 @@
 import pytest
 
-from linkedin_scraper.geo import country_of, searched_countries
+from linkedin_job_scraper.geo import country_of, searched_countries
 
 # Metro labels resolve within these countries, as main scopes to the config's search locations.
 SCOPE = searched_countries(["Italy", "Switzerland", "Ireland", "France"])

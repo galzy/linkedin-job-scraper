@@ -7,17 +7,17 @@ from datetime import datetime
 from loguru import logger
 from sqlalchemy import Row, and_, create_engine, delete, func, insert, or_, select, text, update
 
-from linkedin_scraper.config import SearchQuery
-from linkedin_scraper.constants import (
+from linkedin_job_scraper.config import SearchQuery
+from linkedin_job_scraper.constants import (
     TABLE_JOB_QUERIES,
     TABLE_JOBS_RAW,
     TABLE_RUNS,
     VIEW_JOBS_FILTERED,
 )
-from linkedin_scraper.geo import country_of
-from linkedin_scraper.job import Job
-from linkedin_scraper.language import is_english
-from linkedin_scraper.store.schema import (
+from linkedin_job_scraper.geo import country_of
+from linkedin_job_scraper.job import Job
+from linkedin_job_scraper.language import is_english
+from linkedin_job_scraper.store.schema import (
     JobQueryRow,
     JobRow,
     QueryRow,
@@ -26,7 +26,7 @@ from linkedin_scraper.store.schema import (
     SqlBase,
     StagingRow,
 )
-from linkedin_scraper.store.statements import (
+from linkedin_job_scraper.store.statements import (
     _JOB_FETCH_COLS,
     _JOB_QUERY_UPSERT,
     _JOB_UPSERT,

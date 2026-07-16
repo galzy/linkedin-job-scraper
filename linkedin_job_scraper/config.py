@@ -8,7 +8,7 @@ from urllib.parse import quote
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator, model_validator
 
-from linkedin_scraper.constants import PAGE_SIZE, SEARCH_URL
+from linkedin_job_scraper.constants import PAGE_SIZE, SEARCH_URL
 
 
 class ConfigurationError(Exception):

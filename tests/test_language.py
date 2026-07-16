@@ -1,5 +1,5 @@
-from linkedin_scraper.constants import NO_DESCRIPTION
-from linkedin_scraper.language import is_english
+from linkedin_job_scraper.constants import NO_DESCRIPTION
+from linkedin_job_scraper.language import is_english
 
 
 def test_a_missing_description_is_undetermined():

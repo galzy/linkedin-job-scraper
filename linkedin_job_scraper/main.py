@@ -4,20 +4,20 @@ from pathlib import Path
 
 from loguru import logger
 
-from linkedin_scraper.config import WorkplaceType, load_config
-from linkedin_scraper.constants import CONFIG_PATH, DB_PATH, MAX_PAGES, RECHECK_DAYS
-from linkedin_scraper.filters import derive_workplace_types, relevance_predicate
-from linkedin_scraper.geo import searched_countries
-from linkedin_scraper.logger import init_logging
-from linkedin_scraper.net.http import HttpClient
-from linkedin_scraper.scrape.scraping import (
+from linkedin_job_scraper.config import WorkplaceType, load_config
+from linkedin_job_scraper.constants import CONFIG_PATH, DB_PATH, MAX_PAGES, RECHECK_DAYS
+from linkedin_job_scraper.filters import derive_workplace_types, relevance_predicate
+from linkedin_job_scraper.geo import searched_countries
+from linkedin_job_scraper.logger import init_logging
+from linkedin_job_scraper.net.http import HttpClient
+from linkedin_job_scraper.scrape.scraping import (
     BlockedError,
     NoFilteringSessionError,
     acquire_filtering_session,
     fetch_postings,
     scrape_jobs,
 )
-from linkedin_scraper.store.db import JobsDb
+from linkedin_job_scraper.store.db import JobsDb
 
 
 def format_duration(seconds: float) -> str:

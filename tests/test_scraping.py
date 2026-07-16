@@ -5,12 +5,12 @@ import pytest
 from bs4 import BeautifulSoup
 from pydantic import ValidationError
 
-from linkedin_scraper.config import Config, SearchQuery
-from linkedin_scraper.constants import MAX_PAGES, NO_DESCRIPTION, PAGE_SIZE
-from linkedin_scraper.job import Job
-from linkedin_scraper.net.http import Fetch
-from linkedin_scraper.scrape.parsing import parse_page_jobs
-from linkedin_scraper.scrape.scraping import (
+from linkedin_job_scraper.config import Config, SearchQuery
+from linkedin_job_scraper.constants import MAX_PAGES, NO_DESCRIPTION, PAGE_SIZE
+from linkedin_job_scraper.job import Job
+from linkedin_job_scraper.net.http import Fetch
+from linkedin_job_scraper.scrape.parsing import parse_page_jobs
+from linkedin_job_scraper.scrape.scraping import (
     BlockedError,
     QueryOutcome,
     acquire_filtering_session,

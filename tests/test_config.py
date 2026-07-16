@@ -1,7 +1,7 @@
 import pytest
 import yaml
 
-from linkedin_scraper.config import ConfigurationError, SearchQuery, load_and_validate_config, load_config
+from linkedin_job_scraper.config import ConfigurationError, SearchQuery, load_and_validate_config, load_config
 
 
 def raw(**query_overrides):

@@ -1,6 +1,6 @@
 from pydantic import BaseModel, ConfigDict
 
-from linkedin_scraper.constants import JOB_POSTING_URL
+from linkedin_job_scraper.constants import JOB_POSTING_URL
 
 
 class Job(BaseModel):

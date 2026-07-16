@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from linkedin_scraper.constants import MAX_PAGES
-from linkedin_scraper.logger import LOG_DIR_ENV
+from linkedin_job_scraper.constants import MAX_PAGES
+from linkedin_job_scraper.logger import LOG_DIR_ENV
 
 PROJECT_ROOT = Path(__file__).parent.parent
 
@@ -21,7 +21,7 @@ def run_cli(*args, log_dir=None):
     if log_dir is not None:
         env[LOG_DIR_ENV] = str(log_dir)
     return subprocess.run(
-        [sys.executable, "-m", "linkedin_scraper", *args],
+        [sys.executable, "-m", "linkedin_job_scraper", *args],
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
@@ -80,7 +80,7 @@ SAMPLE = PROJECT_ROOT / "configs" / "config.sample.yaml"
 )
 def test_stored_job_commands_bail_without_a_db(command, args, tmp_path, monkeypatch):
     """With no database, they warn and return rather than creating an empty one."""
-    from linkedin_scraper import cli
+    from linkedin_job_scraper import cli
 
     db = tmp_path / "linkedin_jobs.db"
     monkeypatch.setattr(cli, "DB_PATH", db)
@@ -113,13 +113,13 @@ def test_init_config_writes_a_starter_and_refuses_to_overwrite(tmp_path):
 
 
 def test_a_blocked_run_exits_3_so_cron_can_tell_it_from_a_real_failure(monkeypatch):
-    from linkedin_scraper import cli
+    from linkedin_job_scraper import cli
 
     def blocked(config, max_pages):
         raise cli.BlockedError("blocked mid-run")
 
     monkeypatch.setattr(cli, "run_scrape", blocked)
-    monkeypatch.setattr(sys, "argv", ["linkedin_scraper", "scrape", str(SAMPLE)])
+    monkeypatch.setattr(sys, "argv", ["linkedin_job_scraper", "scrape", str(SAMPLE)])
 
     with pytest.raises(SystemExit) as excinfo:
         cli.main()
@@ -128,13 +128,13 @@ def test_a_blocked_run_exits_3_so_cron_can_tell_it_from_a_real_failure(monkeypat
 
 
 def test_a_run_without_a_filtering_session_exits_4(monkeypatch):
-    from linkedin_scraper import cli
+    from linkedin_job_scraper import cli
 
     def no_session(config, max_pages):
         raise cli.NoFilteringSessionError("no filtering session")
 
     monkeypatch.setattr(cli, "run_scrape", no_session)
-    monkeypatch.setattr(sys, "argv", ["linkedin_scraper", "scrape", str(SAMPLE)])
+    monkeypatch.setattr(sys, "argv", ["linkedin_job_scraper", "scrape", str(SAMPLE)])
 
     with pytest.raises(SystemExit) as excinfo:
         cli.main()
@@ -143,9 +143,9 @@ def test_a_run_without_a_filtering_session_exits_4(monkeypatch):
 
 
 def test_status_prints_the_last_run_and_the_stored_totals(tmp_path, monkeypatch, capsys):
-    from linkedin_scraper import cli
-    from linkedin_scraper.job import Job
-    from linkedin_scraper.store.db import JobsDb
+    from linkedin_job_scraper import cli
+    from linkedin_job_scraper.job import Job
+    from linkedin_job_scraper.store.db import JobsDb
 
     db_path = tmp_path / "linkedin_jobs.db"
     db = JobsDb(path=str(db_path))
@@ -177,8 +177,8 @@ def test_status_prints_the_last_run_and_the_stored_totals(tmp_path, monkeypatch,
 
 
 def test_status_before_any_recorded_run_still_reports_totals(tmp_path, monkeypatch, capsys):
-    from linkedin_scraper import cli
-    from linkedin_scraper.store.db import JobsDb
+    from linkedin_job_scraper import cli
+    from linkedin_job_scraper.store.db import JobsDb
 
     db_path = tmp_path / "linkedin_jobs.db"
     db = JobsDb(path=str(db_path))
@@ -194,7 +194,7 @@ def test_status_before_any_recorded_run_still_reports_totals(tmp_path, monkeypat
 
 
 def _stored_count(db_path):
-    from linkedin_scraper.store.db import JobsDb
+    from linkedin_job_scraper.store.db import JobsDb
 
     db = JobsDb(path=str(db_path))
     total = db.totals()["stored"]
@@ -204,8 +204,8 @@ def _stored_count(db_path):
 
 def _seed_one_relevant_one_irrelevant(db_path):
     """Two old jobs: a relevant Engineer (kept) and an irrelevant Chef (prunable)."""
-    from linkedin_scraper.job import Job
-    from linkedin_scraper.store.db import JobsDb
+    from linkedin_job_scraper.job import Job
+    from linkedin_job_scraper.store.db import JobsDb
 
     db = JobsDb(path=str(db_path))
     db.create_schema()
@@ -220,7 +220,7 @@ def _seed_one_relevant_one_irrelevant(db_path):
 
 
 def test_prune_deletes_matching_rows_after_both_confirmations(tmp_path, monkeypatch):
-    from linkedin_scraper import cli
+    from linkedin_job_scraper import cli
 
     db_path = tmp_path / "linkedin_jobs.db"
     _seed_one_relevant_one_irrelevant(db_path)
@@ -236,7 +236,7 @@ def test_prune_deletes_matching_rows_after_both_confirmations(tmp_path, monkeypa
 
 
 def test_prune_a_wrong_second_confirmation_deletes_nothing(tmp_path, monkeypatch, capsys):
-    from linkedin_scraper import cli
+    from linkedin_job_scraper import cli
 
     db_path = tmp_path / "linkedin_jobs.db"
     _seed_one_relevant_one_irrelevant(db_path)
@@ -253,9 +253,9 @@ def test_prune_a_wrong_second_confirmation_deletes_nothing(tmp_path, monkeypatch
 
 
 def test_prune_without_matching_rows_never_prompts(tmp_path, monkeypatch):
-    from linkedin_scraper import cli
-    from linkedin_scraper.job import Job
-    from linkedin_scraper.store.db import JobsDb
+    from linkedin_job_scraper import cli
+    from linkedin_job_scraper.job import Job
+    from linkedin_job_scraper.store.db import JobsDb
 
     db_path = tmp_path / "linkedin_jobs.db"
     db = JobsDb(path=str(db_path))

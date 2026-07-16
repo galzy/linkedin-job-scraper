@@ -4,10 +4,10 @@ from pathlib import Path
 from loguru import logger
 from rich.text import Text
 
-from linkedin_scraper.console import console
-from linkedin_scraper.constants import LOGS_PATH
+from linkedin_job_scraper.console import console
+from linkedin_job_scraper.constants import LOGS_PATH
 
-LOG_DIR_ENV = "LINKEDIN_SCRAPER_LOG_DIR"  # override the log directory; tests point it at a tmp dir
+LOG_DIR_ENV = "LINKEDIN_JOB_SCRAPER_LOG_DIR"  # override the log directory; tests point it at a tmp dir
 LOG_FILE_NAME = "{time:YYYY-MM-DD}.log"  # one file per day
 LOG_ROTATION = "00:00"  # start a new file at midnight
 LOG_RETENTION = "10 days"  # delete a day's file after this long

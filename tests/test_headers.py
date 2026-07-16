@@ -1,6 +1,6 @@
 from datetime import date
 
-from linkedin_scraper.net.headers import (
+from linkedin_job_scraper.net.headers import (
     _ANCHOR_CHROME,
     _build_profiles,
     current_chrome_major,

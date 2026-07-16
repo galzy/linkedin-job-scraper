@@ -1,3 +1,5 @@
+from typing import Self
+
 from pydantic import BaseModel, ConfigDict
 
 from linkedin_job_scraper.constants import JOB_POSTING_URL
@@ -34,9 +36,9 @@ class Job(BaseModel):
         """Where the posting page — description and open-status — is fetched from: the guest API, by posting id."""
         return f"{JOB_POSTING_URL}/{self.job_url.rstrip('/').rsplit('/', 1)[-1]}"
 
-    def with_posting(self, description: str | None, is_open: bool | None) -> Job:
+    def with_posting(self, description: str | None, is_open: bool | None) -> Self:
         """A copy carrying what one fetch of the posting page yielded: its description and open-status."""
         return self.model_copy(update={"job_description": description, "is_open": is_open})
 
-    def with_workplace_type(self, workplace_type: str) -> Job:
+    def with_workplace_type(self, workplace_type: str) -> Self:
         return self.model_copy(update={"workplace_type": workplace_type})

@@ -3,7 +3,7 @@
 import random
 import threading
 import time
-from typing import NamedTuple
+from typing import NamedTuple, Self
 
 import requests
 from bs4 import BeautifulSoup
@@ -129,7 +129,7 @@ class HttpClient:
         self._session = self._new_session()
 
     @classmethod
-    def from_config(cls, http: HttpConfig) -> HttpClient:
+    def from_config(cls, http: HttpConfig) -> Self:
         """Build the one shared, rate-limited client used for the whole run."""
         return cls(
             RateLimiter(rate_per_minute=http.max_requests_per_minute, jitter=http.rate_jitter),

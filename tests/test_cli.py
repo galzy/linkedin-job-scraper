@@ -18,6 +18,7 @@ search_queries: []
 def run_cli(*args, log_dir=None):
     """Run the module as a user would, with the log dir pointed away from the project's real logs/."""
     env = os.environ.copy()
+    env["TERM"] = "dumb"  # keeps Rich's color off: it splits flag names with escape codes, breaking text asserts
     if log_dir is not None:
         env[LOG_DIR_ENV] = str(log_dir)
     return subprocess.run(

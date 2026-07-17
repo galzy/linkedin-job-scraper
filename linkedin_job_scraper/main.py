@@ -61,13 +61,12 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
         logger.error(f"Blocked by LinkedIn: {e}. Storing the jobs staged before the block")
         blocked = e
 
-    jobs_deduped, attribution = db.staged_scrape()
+    jobs_deduped, attribution, query_types = db.staged_scrape()
     scraped = sum(sum(counter.values()) for counter in attribution.values())
     logger.info(f"Total jobs scraped: {scraped:,}")
     logger.info(f"After removing duplicates: {len(jobs_deduped):,}")
 
-    # Label each job by the tagged query that found it, so the workplace filter can judge it.
-    query_types = {q.query_id: q.harvest_type for q in config.scrape_queries}
+    # Label each job by the tagged query that found it, from the harvest type staged with its card.
     types = derive_workplace_types(attribution, query_types)
     jobs_deduped = [
         job.with_workplace_type(types.get(job.job_url, WorkplaceType.UNTAGGED.value)) for job in jobs_deduped

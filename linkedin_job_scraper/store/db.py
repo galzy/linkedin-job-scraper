@@ -99,13 +99,15 @@ class JobsDb:
         with self.engine.connect() as conn:
             return conn.scalar(select(func.count()).select_from(StagingRow))
 
-    def staged_scrape(self) -> tuple[list[Job], dict[str, Counter[str]]]:
-        """The staged cards as (postings deduped by url, per-query attribution)."""
+    def staged_scrape(self) -> tuple[list[Job], dict[str, Counter[str]], dict[str, str]]:
+        """The staged cards as (postings deduped by url, per-query attribution, per-query harvest type)."""
         attribution: dict[str, Counter[str]] = defaultdict(Counter)
+        query_types: dict[str, str] = {}
         jobs: dict[str, Job] = {}
         with self.engine.connect() as conn:
             for row in conn.execute(select(StagingRow)):
                 attribution[row.query_id][row.job_url] = row.times_seen
+                query_types[row.query_id] = row.harvest_type
                 if row.job_url not in jobs:
                     jobs[row.job_url] = Job(
                         title=row.title,
@@ -114,7 +116,7 @@ class JobsDb:
                         job_url=row.job_url,
                         location=row.location,
                     )
-        return list(jobs.values()), attribution
+        return list(jobs.values()), attribution, query_types
 
     def export_rows(self, all_rows: bool = False, descriptions: bool = True) -> tuple[list[str], list[Row]]:
         """The jobs_raw columns and rows to export: the kept set by default, every row with ``all_rows``."""
@@ -181,7 +183,7 @@ class JobsDb:
         logger.debug(f"Pruned {deleted:,} irrelevant or closed jobs older than {cutoff}")
         return deleted
 
-    def stage_jobs(self, jobs: list[Job], query_id: str) -> None:
+    def stage_jobs(self, jobs: list[Job], query_id: str, harvest_type: str) -> None:
         """Persist one query's scraped cards, collapsing a posting's per-page repeats into times_seen."""
         if not jobs:
             return
@@ -195,6 +197,7 @@ class JobsDb:
             {
                 "job_url": url,
                 "query_id": query_id,
+                "harvest_type": harvest_type,
                 "title": card.title,
                 "company": card.company,
                 "date": card.date,

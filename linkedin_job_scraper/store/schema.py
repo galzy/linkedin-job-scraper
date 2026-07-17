@@ -111,6 +111,7 @@ class StagingRow(SqlBase):
 
     job_url: Mapped[str] = mapped_column(primary_key=True)
     query_id: Mapped[str] = mapped_column(primary_key=True)
+    harvest_type: Mapped[str]
     title: Mapped[str]
     company: Mapped[str]
     date: Mapped[str]

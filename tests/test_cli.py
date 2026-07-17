@@ -236,6 +236,31 @@ def test_export_all_includes_the_rejected_rows_and_no_descriptions_drops_the_col
     assert titles == {"Engineer", "Chef"}  # --all keeps the irrelevant row too
 
 
+def test_export_normalizes_unicode_line_separators(tmp_path, monkeypatch):
+    """U+2028/U+2029 in a description become plain newlines, so no consumer mis-splits the row."""
+    from linkedin_job_scraper import cli
+    from linkedin_job_scraper.job import Job
+    from linkedin_job_scraper.store.db import JobsDb
+
+    db_path = tmp_path / "linkedin_jobs.db"
+    db = JobsDb(path=str(db_path))
+    db.create_schema()
+    seen = Job(title="Engineer", company="ACME", date="2024-01-01", job_url="https://x/1/")
+    db.insert_jobs([seen])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.record_postings([seen.with_posting("line1" + chr(0x2028) + "line2", True)])
+    db.close()
+    monkeypatch.setattr(cli, "DB_PATH", db_path)
+    monkeypatch.setenv(LOG_DIR_ENV, str(tmp_path / "logs"))
+    dest = tmp_path / "jobs.csv"
+
+    cli.export(dest)
+
+    assert chr(0x2028) not in dest.read_text(encoding="utf-8-sig")
+    header, *data = _read_csv(dest)
+    assert data[0][header.index("job_description")] == "line1\nline2"  # the break survives, as a normal newline
+
+
 def _stored_count(db_path):
     from linkedin_job_scraper.store.db import JobsDb
 

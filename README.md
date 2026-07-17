@@ -92,6 +92,7 @@ uv run linkedin-job-scraper scrape configs/other.yaml --max-pages 2 # another co
 | `recompute [config]` | Re-derive a config's verdicts over every stored job — flipping `is_relevant`, then recounting `dup_count` for the groups that shift — a filter edit's effect without waiting for the next scrape. |
 | `refresh [config] [--recheck-days N]` | Fetch missing data and re-check open-status for stored relevant jobs: anything still lacking a description or an open/closed verdict is fetched on sight; the rest are re-checked once older than N days (default 7) and not verified since. Uses the config's `http` settings only, not the queries. |
 | `status` | Print the last run — when, how it ended, its counts — and the stored-job totals. |
+| `export [path] [--all] [--no-descriptions]` | Write stored jobs from DB to a CSV — the kept (relevant, not closed) set by default, every stored row with `--all`. Reads only the database; overwrites `reports/jobs.csv` unless given a path. |
 | `prune <days>` | Permanently delete stored jobs that are irrelevant or closed and older than N days. Asks for confirmation twice; needs an interactive terminal. |
 
 `uv run python -m linkedin_job_scraper` runs the same thing if you'd rather not use the console script.
@@ -110,7 +111,8 @@ status tells a scheduler how a run ended:
 ### The database
 
 There is no built-in viewer — the scraper only writes. `linkedin_jobs.db` is an ordinary SQLite file;
-read it with whatever you already use.
+read it with whatever you already use, or `export` a CSV snapshot of the kept jobs if you'd rather
+not touch SQLite.
 
 Every run writes each job it scrapes to **`jobs_raw`** — raw in that it holds every job, filtered or not:
 

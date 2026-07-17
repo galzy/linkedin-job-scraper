@@ -9,6 +9,7 @@ CONFIGS_PATH = PROJECT_ROOT / "configs"  # every config file; git-ignored bar th
 CONFIG_PATH = CONFIGS_PATH / "config.yaml"
 DB_PATH = PROJECT_ROOT / "linkedin_jobs.db"
 LOGS_PATH = PROJECT_ROOT / "logs"
+REPORTS_PATH = PROJECT_ROOT / "reports"
 
 # --- LinkedIn endpoints ------------------------------------------------------
 BASE_URL = "https://www.linkedin.com"

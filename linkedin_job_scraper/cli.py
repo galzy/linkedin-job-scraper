@@ -1,5 +1,6 @@
 """The command-line interface: the Typer app and the subcommands behind it."""
 
+import csv
 import shutil
 import sys
 import tomllib
@@ -13,7 +14,15 @@ from sqlalchemy.exc import SQLAlchemyError
 
 from linkedin_job_scraper.config import ConfigurationError, load_config
 from linkedin_job_scraper.console import live_status
-from linkedin_job_scraper.constants import CONFIG_PATH, CONFIGS_PATH, DB_PATH, MAX_PAGES, PROJECT_ROOT, RECHECK_DAYS
+from linkedin_job_scraper.constants import (
+    CONFIG_PATH,
+    CONFIGS_PATH,
+    DB_PATH,
+    MAX_PAGES,
+    PROJECT_ROOT,
+    RECHECK_DAYS,
+    REPORTS_PATH,
+)
 from linkedin_job_scraper.filters import relevance_predicate
 from linkedin_job_scraper.logger import init_logging
 from linkedin_job_scraper.main import main as run_scrape
@@ -26,6 +35,7 @@ SAMPLE_CONFIG = CONFIGS_PATH / "config.sample.yaml"
 app = typer.Typer(no_args_is_help=True, help="Scrape LinkedIn jobs, filter them, and store them in a database.")
 
 ConfigArg = Annotated[Path, typer.Argument(help="the config file to use", show_default=False)]
+EXPORT_PATH = REPORTS_PATH / "jobs.csv"
 
 
 def _version() -> str:
@@ -130,6 +140,23 @@ def status() -> None:
     )
 
 
+def export(path: str | Path = EXPORT_PATH, all_rows: bool = False, descriptions: bool = True) -> None:
+    """Write stored jobs to ``path`` as CSV: the kept set by default, every stored row with ``all_rows``."""
+    init_logging()
+    if not _has_db():
+        return
+    db = JobsDb(path=str(DB_PATH))
+    columns, rows = db.export_rows(all_rows, descriptions)
+    db.close()
+    dest = Path(path)
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with dest.open("w", encoding="utf-8-sig", newline="") as f:
+        writer = csv.writer(f)
+        writer.writerow(columns)
+        writer.writerows(rows)
+    logger.success(f"Exported {len(rows):,} jobs to {dest}")
+
+
 def _confirm_prune(count: int, days: int) -> bool:
     """Two distinct terminal confirmations before a destructive prune; False aborts on any miss."""
     if not sys.stdin.isatty():
@@ -226,6 +253,18 @@ def _refresh(
 @app.command("status", help="show the last run and stored-job totals")
 def _status() -> None:
     status()
+
+
+@app.command(
+    "export",
+    help="write stored jobs to a CSV file — the kept (relevant, not closed) set by default; overwrites",
+)
+def _export(
+    path: Annotated[Path, typer.Argument(help="where to write the CSV")] = EXPORT_PATH,
+    all_rows: Annotated[bool, typer.Option("--all", help="include every stored job, rejected and closed")] = False,
+    descriptions: Annotated[bool, typer.Option(help="include the job_description column")] = True,
+) -> None:
+    export(path, all_rows, descriptions)
 
 
 @app.command("prune", help="permanently delete old irrelevant or closed jobs from the database")

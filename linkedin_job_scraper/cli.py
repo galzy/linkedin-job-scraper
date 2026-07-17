@@ -142,7 +142,6 @@ def status() -> None:
 
 def export(path: str | Path = EXPORT_PATH, all_rows: bool = False, descriptions: bool = True) -> None:
     """Write stored jobs to ``path`` as CSV: the kept set by default, every stored row with ``all_rows``."""
-    init_logging()
     if not _has_db():
         return
     db = JobsDb(path=str(DB_PATH))
@@ -154,7 +153,7 @@ def export(path: str | Path = EXPORT_PATH, all_rows: bool = False, descriptions:
         writer = csv.writer(f)
         writer.writerow(columns)
         writer.writerows(rows)
-    logger.success(f"Exported {len(rows):,} jobs to {dest}")
+    print(f"Exported {len(rows):,} jobs to {dest}")
 
 
 def _confirm_prune(count: int, days: int) -> bool:

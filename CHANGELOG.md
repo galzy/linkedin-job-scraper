@@ -10,6 +10,11 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
   `--no-descriptions` drops the `job_description` column for a leaner sheet. Defaults to `reports/jobs.csv`
   (git-ignored) and overwrites, since the export is a regenerable snapshot.
 
+### Fixed
+- Workplace type on jobs recovered from an interrupted run. The harvest type is now staged with each card
+  (`harvest_type` on `scrape_staging`), so a job recovered under a query the current config has dropped is
+  still labeled instead of defaulting to `untagged`.
+
 ## [v0.4.0 ]
 
 ### Added

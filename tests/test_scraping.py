@@ -194,10 +194,12 @@ class StagingSink:
     def __init__(self):
         self.jobs: list[Job] = []
         self.attribution: dict[str, Counter[str]] = defaultdict(Counter)
+        self.query_types: dict[str, str] = {}
 
-    def __call__(self, jobs: list[Job], query_id: str) -> None:
+    def __call__(self, jobs: list[Job], query_id: str, harvest_type: str) -> None:
         self.jobs.extend(jobs)
         self.attribution[query_id].update(job.job_url for job in jobs)
+        self.query_types[query_id] = harvest_type
 
 
 def test_an_empty_run_is_a_block_not_a_finish():
@@ -261,6 +263,8 @@ def test_scrape_jobs_attributes_each_job_to_the_query_that_found_it():
     # The search fans out, so the job is attributed to each variant that surfaced it, once apiece.
     assert set(sink.attribution) == {v.query_id for v in q.harvest_variants()}
     assert all(sum(counter.values()) == 1 for counter in sink.attribution.values())
+    # Each variant stages the workplace type it searched, so recovery can label its jobs.
+    assert sink.query_types == {v.query_id: v.harvest_type for v in q.harvest_variants()}
 
 
 def test_a_block_stages_the_attribution_gathered_before_it():

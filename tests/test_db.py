@@ -656,10 +656,12 @@ def test_a_rescrape_upgrades_untagged_to_a_known_type(db):
 
 
 def test_staged_scrape_dedupes_by_url_and_attributes_per_query(db):
-    db.stage_jobs([job(job_url="https://x/1/"), job(job_url="https://x/1/"), job(job_url="https://x/2/")], "qA")
-    db.stage_jobs([job(job_url="https://x/1/")], "qB")
+    db.stage_jobs(
+        [job(job_url="https://x/1/"), job(job_url="https://x/1/"), job(job_url="https://x/2/")], "qA", "remote"
+    )
+    db.stage_jobs([job(job_url="https://x/1/")], "qB", "hybrid")
 
-    jobs, attribution = db.staged_scrape()
+    jobs, attribution, _ = db.staged_scrape()
 
     assert sorted(j.job_url for j in jobs) == ["https://x/1/", "https://x/2/"]  # one row per posting
     assert attribution["qA"] == Counter({"https://x/1/": 2, "https://x/2/": 1})  # per-page cards counted
@@ -667,20 +669,30 @@ def test_staged_scrape_dedupes_by_url_and_attributes_per_query(db):
     assert sum(sum(c.values()) for c in attribution.values()) == 4  # the pre-dedup scraped total
 
 
+def test_staged_scrape_returns_each_querys_harvest_type(db):
+    """The harvest type staged with a card lets a run label a job whose query its config has dropped."""
+    db.stage_jobs([job(job_url="https://x/1/")], "qA", "remote")
+    db.stage_jobs([job(job_url="https://x/2/")], "qB", "hybrid")
+
+    _, _, query_types = db.staged_scrape()
+
+    assert query_types == {"qA": "remote", "qB": "hybrid"}
+
+
 def test_staged_scrape_keeps_one_row_when_a_postings_title_drifts(db):
     """LinkedIn serves one posting under drifting title text; the url is its identity, so it stays one row."""
-    db.stage_jobs([job(title="Engineer"), job(title="Engineer (Remote)")], "qA")  # same url
+    db.stage_jobs([job(title="Engineer"), job(title="Engineer (Remote)")], "qA", "remote")  # same url
 
-    jobs, _ = db.staged_scrape()
+    jobs, _, _ = db.staged_scrape()
 
     assert [j.title for j in jobs] == ["Engineer"]  # first card wins
 
 
 def test_reset_staging_empties_the_table(db):
-    db.stage_jobs([job()], "qA")
+    db.stage_jobs([job()], "qA", "remote")
     db.reset_staging()
 
-    jobs, attribution = db.staged_scrape()
+    jobs, attribution, _ = db.staged_scrape()
 
     assert jobs == []
     assert not attribution
@@ -688,7 +700,7 @@ def test_reset_staging_empties_the_table(db):
 
 def test_staged_count_tracks_the_pending_rows(db):
     assert db.staged_count() == 0
-    db.stage_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/")], "qA")
+    db.stage_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/")], "qA", "remote")
     assert db.staged_count() == 2
     db.reset_staging()
     assert db.staged_count() == 0
@@ -696,9 +708,9 @@ def test_staged_count_tracks_the_pending_rows(db):
 
 def test_leftover_staging_is_promoted_before_it_is_cleared(db):
     """A prior run's staged rows reach jobs_raw, and staging is cleared only after — the WAL discipline."""
-    db.stage_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/")], "qA")
+    db.stage_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/")], "qA", "remote")
 
-    promoted, _ = db.staged_scrape()  # what main() reads back before promoting
+    promoted, _, _ = db.staged_scrape()  # what main() reads back before promoting
     db.insert_jobs(promoted)
     db.reset_staging()  # only after the durable insert
 

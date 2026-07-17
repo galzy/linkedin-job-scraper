@@ -69,7 +69,7 @@ def scrape_query(query: SearchQuery, client: HttpClient, tag: str, max_pages: in
 
 
 def scrape_jobs(
-    config: Config, client: HttpClient, stage: Callable[[list[Job], str], None], max_pages: int = MAX_PAGES
+    config: Config, client: HttpClient, stage: Callable[[list[Job], str, str], None], max_pages: int = MAX_PAGES
 ) -> None:
     """Run every query once, staging each query's cards as it finishes.
 
@@ -96,7 +96,7 @@ def scrape_jobs(
     with ThreadPoolExecutor(max_workers=config.http.search_workers) as executor:
         results = executor.map(lambda t, q: scrape_query(q, client, t, max_pages), tags, queries)
         for tag, query, result in zip(tags, queries, results, strict=True):
-            stage(result.jobs, query.query_id)  # persist this query before the next one runs
+            stage(result.jobs, query.query_id, query.harvest_type)  # persist this query before the next one runs
             if result.outcome is QueryOutcome.FAILED:
                 gave_up.append(tag)
             elif result.outcome is QueryOutcome.EXHAUSTED and not result.jobs:

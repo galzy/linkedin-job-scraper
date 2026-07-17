@@ -2,7 +2,7 @@
 
 Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @ `8929765` (2024-08-17), rewritten since.
 
-## [Unreleased]
+## [v0.5.0]
 
 ### Added
 - An `export` command. Writes stored jobs from the DB to a CSV so you can open them in a spreadsheet without a

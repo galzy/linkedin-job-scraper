@@ -29,11 +29,14 @@ def init_logging() -> None:
         level=LOG_LEVEL_CONSOLE,
         colorize=True,
     )
-    logger.add(
-        str(log_dir / LOG_FILE_NAME),  # loguru creates the parent directory itself
-        format=LOG_FORMAT,
-        level=LOG_LEVEL_FILE,
-        rotation=LOG_ROTATION,
-        retention=LOG_RETENTION,
-        encoding="utf-8",
-    )
+    try:
+        logger.add(
+            str(log_dir / LOG_FILE_NAME),  # loguru creates the parent directory itself
+            format=LOG_FORMAT,
+            level=LOG_LEVEL_FILE,
+            rotation=LOG_ROTATION,
+            retention=LOG_RETENTION,
+            encoding="utf-8",
+        )
+    except OSError as e:
+        logger.warning(f"File logging disabled — can't write to {log_dir}: {e}")

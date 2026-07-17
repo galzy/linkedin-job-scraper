@@ -143,6 +143,32 @@ def test_a_run_without_a_filtering_session_exits_4(monkeypatch):
     assert excinfo.value.code == 4
 
 
+def test_an_unexpected_error_exits_5_rather_than_dumping_a_traceback(monkeypatch):
+    from linkedin_job_scraper import cli
+
+    def boom(config, max_pages):
+        raise RuntimeError("something unforeseen")
+
+    monkeypatch.setattr(cli, "run_scrape", boom)
+    monkeypatch.setattr(sys, "argv", ["linkedin_job_scraper", "scrape", str(SAMPLE)])
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli.main()
+
+    assert excinfo.value.code == 5
+
+
+def test_init_logging_falls_back_to_console_when_the_log_dir_is_unwritable(tmp_path, monkeypatch):
+    """An unwritable log dir must degrade to console logging, not crash the run before any work."""
+    from linkedin_job_scraper.logger import init_logging
+
+    blocker = tmp_path / "blocker"
+    blocker.write_text("i am a file, not a directory")
+    monkeypatch.setenv(LOG_DIR_ENV, str(blocker / "logs"))  # a directory cannot live under a file
+
+    init_logging()  # must not raise
+
+
 def test_status_prints_the_last_run_and_the_stored_totals(tmp_path, monkeypatch, capsys):
     from linkedin_job_scraper import cli
     from linkedin_job_scraper.job import Job

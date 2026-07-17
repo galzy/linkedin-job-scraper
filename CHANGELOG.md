@@ -10,7 +10,13 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
   `--no-descriptions` drops the `job_description` column for a leaner sheet. Defaults to `reports/jobs.csv`
   (git-ignored) and overwrites, since the export is a regenerable snapshot.
 
-### Fixed
+### Self-healing
+- Database open. A corrupt `linkedin_jobs.db` is quarantined and rebuilt instead of crashing, and WAL mode plus a
+  busy timeout let a read (`status`/`export`) run during a live scrape without `database is locked`.
+- Graceful failures. An unexpected error exits `5` (logged, not a raw traceback); an unwritable log directory falls
+  back to console-only instead of crashing at startup.
+- Atomic CSV export. A target locked by another program (open in a spreadsheet) leaves the previous export intact
+  and exits `1` rather than clobbering it.
 - Workplace type on jobs recovered from an interrupted run. The harvest type is now staged with each card
   (`harvest_type` on `scrape_staging`), so a job recovered under a query the current config has dropped is
   still labeled instead of defaulting to `untagged`.

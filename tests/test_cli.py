@@ -287,6 +287,47 @@ def test_export_normalizes_unicode_line_separators(tmp_path, monkeypatch):
     assert data[0][header.index("job_description")] == "line1\nline2"  # the break survives, as a normal newline
 
 
+def test_export_failure_leaves_the_previous_file_intact_and_exits_1(tmp_path, monkeypatch, capsys):
+    """A failed swap (e.g. the target open in Excel) never clobbers a good export; it exits 1 with a hint."""
+    from linkedin_job_scraper import cli
+
+    db_path = tmp_path / "linkedin_jobs.db"
+    _seed_one_relevant_one_irrelevant(db_path)
+    monkeypatch.setattr(cli, "DB_PATH", db_path)
+    monkeypatch.setenv(LOG_DIR_ENV, str(tmp_path / "logs"))
+    dest = tmp_path / "jobs.csv"
+    dest.write_text("PRIOR EXPORT", encoding="utf-8")
+
+    def locked(*args, **kwargs):
+        raise PermissionError("the file is open in another program")
+
+    monkeypatch.setattr(cli.os, "replace", locked)  # the atomic swap fails
+
+    with pytest.raises(SystemExit) as excinfo:
+        cli.export(dest)
+
+    assert excinfo.value.code == 1
+    assert dest.read_text(encoding="utf-8") == "PRIOR EXPORT"  # the good export is untouched
+    assert not list(tmp_path.glob("jobs.csv.tmp"))  # the temp sibling is cleaned up
+    assert "close it and retry" in capsys.readouterr().err  # an actionable message, not a traceback
+
+
+def test_export_leaves_no_temp_file_behind(tmp_path, monkeypatch):
+    """A successful export swaps the temp in and leaves only the CSV, never a stray .tmp."""
+    from linkedin_job_scraper import cli
+
+    db_path = tmp_path / "linkedin_jobs.db"
+    _seed_one_relevant_one_irrelevant(db_path)
+    monkeypatch.setattr(cli, "DB_PATH", db_path)
+    monkeypatch.setenv(LOG_DIR_ENV, str(tmp_path / "logs"))
+    dest = tmp_path / "jobs.csv"
+
+    cli.export(dest)
+
+    assert dest.exists()
+    assert not list(tmp_path.glob("*.tmp"))
+
+
 def _stored_count(db_path):
     from linkedin_job_scraper.store.db import JobsDb
 

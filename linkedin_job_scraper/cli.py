@@ -1,6 +1,7 @@
 """The command-line interface: the Typer app and the subcommands behind it."""
 
 import csv
+import os
 import shutil
 import sys
 import tomllib
@@ -149,11 +150,19 @@ def export(path: str | Path = EXPORT_PATH, all_rows: bool = False, descriptions:
     db.close()
     dest = Path(path)
     dest.parent.mkdir(parents=True, exist_ok=True)
-    with dest.open("w", encoding="utf-8-sig", newline="") as f:
-        writer = csv.writer(f)
-        writer.writerow(columns)
-        line_seps = {0x2028: "\n", 0x2029: "\n"}  # fold Unicode LS/PS to \n; CSV readers mis-split on them
-        writer.writerows([c.translate(line_seps) if isinstance(c, str) else c for c in row] for row in rows)
+    line_seps = {0x2028: "\n", 0x2029: "\n"}  # fold Unicode LS/PS to \n; CSV readers mis-split on them
+    # Write a temp sibling and swap it in, so a failed write never clobbers a good export.
+    tmp = dest.parent / (dest.name + ".tmp")
+    try:
+        with tmp.open("w", encoding="utf-8-sig", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(columns)
+            writer.writerows([c.translate(line_seps) if isinstance(c, str) else c for c in row] for row in rows)
+        os.replace(tmp, dest)
+    except OSError as e:
+        tmp.unlink(missing_ok=True)
+        print(f"Could not write {dest}: {e}. If it is open in another program, close it and retry.", file=sys.stderr)
+        raise SystemExit(1) from e
     print(f"Exported {len(rows):,} jobs to {dest}")
 
 

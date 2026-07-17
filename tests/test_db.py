@@ -455,6 +455,47 @@ def test_a_database_that_cannot_be_opened_raises_rather_than_running_on(tmp_path
         database.create_schema()
 
 
+def test_a_corrupt_database_is_quarantined_and_rebuilt(tmp_path):
+    """A malformed DB file is moved aside and reopened empty, so a run heals instead of crashing."""
+    db_path = tmp_path / "linkedin_jobs.db"
+    db_path.write_bytes(b"not a sqlite database, just garbage")
+
+    database = JobsDb(str(db_path))
+    database.create_schema()  # detects corruption, quarantines the file, rebuilds
+
+    assert len(list(tmp_path.glob("linkedin_jobs.db.corrupt-*"))) == 1  # the bad file, kept aside
+    assert database.totals() == {"stored": 0, "relevant": 0, "missing_descriptions": 0}  # fresh schema
+    database.close()
+
+
+def test_a_healthy_database_is_not_quarantined(tmp_path):
+    """A DB that passes quick_check keeps its data across a reopen — no needless rebuild."""
+    db_path = tmp_path / "linkedin_jobs.db"
+    first = JobsDb(str(db_path))
+    first.create_schema()
+    first.insert_jobs([job()])
+    first.close()
+
+    second = JobsDb(str(db_path))
+    second.create_schema()  # quick_check passes; nothing is moved
+
+    assert not list(tmp_path.glob("linkedin_jobs.db.corrupt-*"))
+    assert second.totals()["stored"] == 1
+    second.close()
+
+
+def test_the_engine_opens_in_wal_mode_with_a_busy_timeout(tmp_path):
+    """The concurrency PRAGMAs are set on every connection, so a reader and a scrape don't deadlock."""
+    database = JobsDb(str(tmp_path / "linkedin_jobs.db"))
+    database.create_schema()
+
+    with database.engine.connect() as conn:
+        assert conn.scalar(text("PRAGMA journal_mode")) == "wal"
+        assert conn.scalar(text("PRAGMA busy_timeout")) == 5000
+        assert conn.scalar(text("PRAGMA synchronous")) == 1  # NORMAL
+    database.close()
+
+
 # --- queries, attribution, and runs ------------------------------------------
 
 

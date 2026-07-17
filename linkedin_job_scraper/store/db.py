@@ -1,11 +1,13 @@
 """The jobs database: the jobs themselves plus the queries, attribution, and runs behind them."""
 
+import os
+import sqlite3
 from collections import Counter, defaultdict
 from collections.abc import Callable, Collection
 from datetime import datetime
 
 from loguru import logger
-from sqlalchemy import Row, and_, create_engine, delete, func, insert, or_, select, text, update
+from sqlalchemy import Engine, Row, and_, create_engine, delete, event, func, insert, or_, select, text, update
 
 from linkedin_job_scraper.config import SearchQuery
 from linkedin_job_scraper.constants import (
@@ -37,11 +39,55 @@ from linkedin_job_scraper.store.statements import (
 )
 
 
+def _apply_pragmas(dbapi_connection: sqlite3.Connection, _record) -> None:
+    """WAL plus a busy timeout so a read command and a live scrape's writes wait each other out."""
+    cursor = dbapi_connection.cursor()
+    cursor.execute("PRAGMA journal_mode = WAL")
+    cursor.execute("PRAGMA busy_timeout = 5000")
+    cursor.execute("PRAGMA synchronous = NORMAL")
+    cursor.close()
+
+
 class JobsDb:
     """The jobs database: the jobs themselves plus the queries, attribution, and runs behind them."""
 
     def __init__(self, path: str) -> None:
-        self.engine = create_engine(f"sqlite:///{path}")
+        self.path = path
+        self._quarantine_if_corrupt()  # heal the file before opening it
+        self.engine = self._build_engine()
+
+    def _build_engine(self) -> Engine:
+        engine = create_engine(f"sqlite:///{self.path}")
+        event.listen(engine, "connect", _apply_pragmas)
+        return engine
+
+    def _quarantine_if_corrupt(self) -> None:
+        """Move a corrupt DB file aside so an empty one takes its place; scraped data rebuilds next run.
+
+        Only a malformed image is discarded; a locked or unreadable file is left to surface normally,
+        since the fix there is to wait out the lock or correct the path, not to lose data.
+        """
+        if not os.path.isfile(self.path):  # :memory: or a not-yet-created file — nothing to check
+            return
+        try:
+            connection = sqlite3.connect(self.path)
+            try:
+                # quick_check scans every page: ~50ms at 20MB, growing with the file
+                healthy = connection.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+            finally:
+                connection.close()
+        except sqlite3.OperationalError:
+            return  # locked or unreadable, not corrupt
+        except sqlite3.DatabaseError:
+            healthy = False  # malformed image
+        if healthy:
+            return
+        quarantined = f"{self.path}.corrupt-{datetime.now():%Y%m%d-%H%M%S}"
+        os.replace(self.path, quarantined)
+        for sidecar in (f"{self.path}-wal", f"{self.path}-shm"):
+            if os.path.exists(sidecar):
+                os.remove(sidecar)
+        logger.error(f"Database was corrupt; moved it to {quarantined} and rebuilt from scratch")
 
     def create_schema(self) -> None:
         """Create the tables and the filtered view. Idempotent."""

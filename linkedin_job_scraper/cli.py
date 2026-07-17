@@ -152,7 +152,8 @@ def export(path: str | Path = EXPORT_PATH, all_rows: bool = False, descriptions:
     with dest.open("w", encoding="utf-8-sig", newline="") as f:
         writer = csv.writer(f)
         writer.writerow(columns)
-        writer.writerows(rows)
+        line_seps = {0x2028: "\n", 0x2029: "\n"}  # fold Unicode LS/PS to \n; CSV readers mis-split on them
+        writer.writerows([c.translate(line_seps) if isinstance(c, str) else c for c in row] for row in rows)
     print(f"Exported {len(rows):,} jobs to {dest}")
 
 
@@ -219,7 +220,7 @@ def scrape(
         run_scrape(config, max_pages=max_pages)
 
 
-@app.command("init-config", help="write a starter config from the sample")
+@app.command("init-config", help="write a starter config from the sample to the given path")
 def _init_config(
     path: Annotated[Path, typer.Argument(help="where to write the new config", show_default=False)],
 ) -> None:
@@ -266,7 +267,7 @@ def _export(
     export(path, all_rows, descriptions)
 
 
-@app.command("prune", help="permanently delete old irrelevant or closed jobs from the database")
+@app.command("prune", help="permanently delete old irrelevant or closed jobs older than the given number of days")
 def _prune(
     days: Annotated[
         int,

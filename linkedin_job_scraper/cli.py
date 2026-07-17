@@ -280,7 +280,7 @@ def _prune(
 def main() -> None:
     """Run the Typer app, mapping run-time failures to exit codes a cron job can read."""
     # A cron job has nothing but the exit status to go on: 1 config/DB error, 2 usage, 3 blocked,
-    # 4 no filtering session.
+    # 4 no filtering session, 5 anything unforeseen.
     try:
         app()
     except BlockedError as e:
@@ -292,3 +292,6 @@ def main() -> None:
     except (ConfigurationError, SQLAlchemyError) as e:
         logger.error(e)
         sys.exit(1)
+    except Exception:
+        logger.exception("Unexpected error")
+        sys.exit(5)

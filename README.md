@@ -107,6 +107,7 @@ status tells a scheduler how a run ended:
 | `2` | usage error |
 | `3` | blocked by LinkedIn |
 | `4` | no filtering session drawn (aborted before scraping — see [How it works](#how-it-works)) |
+| `5` | unexpected error |
 
 ### The database
 

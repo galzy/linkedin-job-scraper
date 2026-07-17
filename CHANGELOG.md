@@ -4,6 +4,12 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
 
 ## [Unreleased]
 
+### Added
+- An `export` command. Writes stored jobs from the DB to a CSV so you can open them in a spreadsheet without a
+  SQLite client — the kept (relevant, not closed) set by default, or every stored row with `--all`.
+  `--no-descriptions` drops the `job_description` column for a leaner sheet. Defaults to `reports/jobs.csv`
+  (git-ignored) and overwrites, since the export is a regenerable snapshot.
+
 ## [v0.4.0 ]
 
 ### Added

@@ -77,7 +77,7 @@ SAMPLE = PROJECT_ROOT / "configs" / "config.sample.yaml"
 
 @pytest.mark.parametrize(
     ("command", "args"),
-    [("recompute", [SAMPLE]), ("refresh", [SAMPLE]), ("status", []), ("prune", [90])],
+    [("recompute", [SAMPLE]), ("refresh", [SAMPLE]), ("status", []), ("export", []), ("prune", [90])],
 )
 def test_stored_job_commands_bail_without_a_db(command, args, tmp_path, monkeypatch):
     """With no database, they warn and return rather than creating an empty one."""
@@ -192,6 +192,48 @@ def test_status_before_any_recorded_run_still_reports_totals(tmp_path, monkeypat
     out = capsys.readouterr().out
     assert "No runs recorded yet" in out
     assert "Stored: 0 jobs, 0 relevant, 0 missing descriptions" in out
+
+
+def _read_csv(path):
+    import csv
+
+    with path.open(encoding="utf-8-sig", newline="") as f:
+        return list(csv.reader(f))
+
+
+def test_export_writes_the_kept_jobs_to_csv(tmp_path, monkeypatch):
+    from linkedin_job_scraper import cli
+    from linkedin_job_scraper.store.schema import JobRow
+
+    db_path = tmp_path / "linkedin_jobs.db"
+    _seed_one_relevant_one_irrelevant(db_path)  # a relevant Engineer (kept), an irrelevant Chef
+    monkeypatch.setattr(cli, "DB_PATH", db_path)
+    monkeypatch.setenv(LOG_DIR_ENV, str(tmp_path / "logs"))
+    dest = tmp_path / "jobs.csv"
+
+    cli.export(dest)
+
+    header, *data = _read_csv(dest)
+    assert header == list(JobRow.__table__.columns.keys())  # every column, in schema order
+    titles = {row[header.index("title")] for row in data}
+    assert titles == {"Engineer"}  # the kept set only: the irrelevant Chef is absent
+
+
+def test_export_all_includes_the_rejected_rows_and_no_descriptions_drops_the_column(tmp_path, monkeypatch):
+    from linkedin_job_scraper import cli
+
+    db_path = tmp_path / "linkedin_jobs.db"
+    _seed_one_relevant_one_irrelevant(db_path)
+    monkeypatch.setattr(cli, "DB_PATH", db_path)
+    monkeypatch.setenv(LOG_DIR_ENV, str(tmp_path / "logs"))
+    dest = tmp_path / "jobs.csv"
+
+    cli.export(dest, all_rows=True, descriptions=False)
+
+    header, *data = _read_csv(dest)
+    assert "job_description" not in header
+    titles = {row[header.index("title")] for row in data}
+    assert titles == {"Engineer", "Chef"}  # --all keeps the irrelevant row too
 
 
 def _stored_count(db_path):

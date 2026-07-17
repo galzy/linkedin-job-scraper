@@ -116,6 +116,16 @@ class JobsDb:
                     )
         return list(jobs.values()), attribution
 
+    def export_rows(self, all_rows: bool = False, descriptions: bool = True) -> tuple[list[str], list[Row]]:
+        """The jobs_raw columns and rows to export: the kept set by default, every row with ``all_rows``."""
+        cols = [c for c in JobRow.__table__.columns if descriptions or c.key != "job_description"]
+        stmt = select(*cols)
+        if not all_rows:
+            stmt = stmt.where(JobRow.is_relevant.is_(True), JobRow.is_open.isnot(False))
+        with self.engine.connect() as conn:
+            rows = conn.execute(stmt).all()
+        return [c.key for c in cols], rows
+
     def postings_to_refresh(self, stale_before: str) -> list[Job]:
         """Relevant, not-closed jobs to (re)fetch: those still missing data, plus ones due to be re-checked.
 

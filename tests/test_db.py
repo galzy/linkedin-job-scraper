@@ -188,6 +188,29 @@ def test_the_filtered_view_hides_the_rows_the_filters_reject(db):
     assert len(rows(db, "title")) == 2  # the raw row is still there to audit
 
 
+def test_export_rows_returns_the_kept_set_by_default_and_every_row_with_all(db):
+    """The default export is the filtered view's kept set; all_rows widens it to every stored row."""
+    db.insert_jobs([job(title="Engineer"), job(title="Chef", job_url="https://x/2/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.record_postings([job(is_open=False)])  # the relevant Engineer's posting has since closed
+
+    _, kept = db.export_rows()
+    assert kept == []  # relevant but closed, and the Chef is irrelevant: nothing kept
+
+    _, everything = db.export_rows(all_rows=True)
+    assert len(everything) == 2  # every stored row, closed and irrelevant included
+
+
+def test_export_rows_drops_the_description_column_when_asked(db):
+    db.insert_jobs([job()])
+
+    with_desc, _ = db.export_rows()
+    without_desc, _ = db.export_rows(descriptions=False)
+    assert "job_description" in with_desc
+    assert "job_description" not in without_desc
+    assert without_desc == [c for c in with_desc if c != "job_description"]
+
+
 def test_dup_group_normalizes_title_and_company_across_urls(db):
     """The generated dup_group collapses the same posting under different URLs, casing, and spacing."""
     db.insert_jobs(

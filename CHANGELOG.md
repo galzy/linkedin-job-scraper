@@ -11,6 +11,7 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
 ### Changed
 - The session probe logs its query and says why a draw was inconclusive (fetch failed, no results
   even unfiltered, empty remote page) instead of the catch-all "probe unanswerable".
+- The `jobs_filtered` view orders rows newest-first, then by company and title.
 - The refresh due-check drops its posting-date condition and keys on `last_verified` alone.
 - Lowered default RECHECK_DAYS to 3
 

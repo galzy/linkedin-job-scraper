@@ -98,7 +98,8 @@ class JobsDb:
         columns = ", ".join(JobRow.__table__.columns.keys())
         create_view = (
             f"CREATE VIEW {VIEW_JOBS_FILTERED} AS SELECT {columns} FROM {TABLE_JOBS_RAW} "
-            "WHERE is_relevant = 1 AND is_open IS NOT 0"
+            "WHERE is_relevant = 1 AND is_open IS NOT 0 "
+            "ORDER BY date DESC, company, title"
         )
         with self.engine.begin() as conn:
             conn.execute(text(f"DROP VIEW IF EXISTS {VIEW_JOBS_FILTERED}"))

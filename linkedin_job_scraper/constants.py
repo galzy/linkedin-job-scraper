@@ -20,7 +20,7 @@ SEARCH_REFERER = f"{BASE_URL}/jobs/search/"
 PAGE_SIZE = 10  # 10 is the max LinkedIn serves per request; &start= is an exact job index
 MAX_PAGES = 100  # start >= 1000 always 400s; page 99 (start=990) is the last that exists
 SESSION_DRAWS = 10  # tries at drawing a filtering session; at the observed ~50% odds, 10 misses are ~0.1%
-RECHECK_DAYS = 7  # leave a posting alone this long before re-checking that it is still open
+RECHECK_DAYS = 3  # leave a posting alone this long before re-checking that it is still open
 
 # --- SQLite ------------------------------------------------------------------
 TABLE_JOBS_RAW = "jobs_raw"  # every scraped job, filtered or not; duplicates counted, not stored

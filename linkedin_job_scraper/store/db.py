@@ -178,16 +178,12 @@ class JobsDb:
         """Relevant, not-closed jobs to (re)fetch: those still missing data, plus ones due to be re-checked.
 
         A missing description or a never-determined open-status (is_open NULL) is fetched on sight,
-        regardless of age. A job is otherwise due when first posted before ``stale_before`` (its posting
-        date, or first_seen when the card carried none) and last verified before it too — or never. A
-        confirmed-closed posting is left be, even one still missing a description: a removed listing keeps
-        404ing, so re-fetching is futile.
+        regardless of age. A job is otherwise due when last verified before ``stale_before`` — or never:
+        what a re-check discovers is whatever changed since the last look, so that is the clock, not the
+        posting date. A confirmed-closed posting is left be, even one still missing a description: a
+        removed listing keeps 404ing, so re-fetching is futile.
         """
-        age = func.coalesce(func.nullif(JobRow.date, ""), JobRow.first_seen)
-        due = and_(
-            age < stale_before,
-            or_(JobRow.last_verified.is_(None), JobRow.last_verified < stale_before),
-        )
+        due = or_(JobRow.last_verified.is_(None), JobRow.last_verified < stale_before)
         with self.engine.connect() as conn:
             rows = conn.execute(
                 select(*_JOB_FETCH_COLS).where(
@@ -209,8 +205,8 @@ class JobsDb:
     def _prunable(cutoff: str):
         """Rows to prune: irrelevant or confirmed-closed, and older than ``cutoff``.
 
-        Age is the posting date, falling back to first_seen when the card carried none — the same
-        coalesce postings_to_refresh uses. Not-yet-judged rows (is_relevant/is_open NULL) never match.
+        Age is the posting date, falling back to first_seen when the card carried none.
+        Not-yet-judged rows (is_relevant/is_open NULL) never match.
         """
         age = func.coalesce(func.nullif(JobRow.date, ""), JobRow.first_seen)
         return and_(age < cutoff, or_(JobRow.is_relevant.is_(False), JobRow.is_open.is_(False)))

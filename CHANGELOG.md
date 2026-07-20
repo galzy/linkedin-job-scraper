@@ -2,6 +2,12 @@
 
 Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @ `8929765` (2024-08-17), rewritten since.
 
+## [Unreleased]
+
+### Added
+- Keywords syntax validation. A malformed boolean expression (dangling operator, unbalanced or empty
+  parens, no terms) now fails config load instead of silently searching for nothing.
+
 ## [v0.5.0]
 
 ### Added

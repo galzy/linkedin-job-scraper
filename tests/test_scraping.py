@@ -297,7 +297,8 @@ class SessionClient:
     """One scripted pipeline state per session; renew_session moves to the next.
 
     "A" serves every variant the identical page, "B" gives remote its own, "empty" and
-    "fail" stand for a probe page without cards and a fetch that gave up.
+    "fail" stand for a probe page without cards and a fetch that gave up, "dry-remote"
+    for an empty remote page alongside a populated unfiltered one.
     """
 
     def __init__(self, states: list[str]):
@@ -314,6 +315,8 @@ class SessionClient:
         if state == "fail":
             return Fetch(None)
         if state == "empty":
+            return Fetch(BeautifulSoup(EMPTY_PAGE, "html.parser"))
+        if state == "dry-remote" and "f_WT=2" in url:
             return Fetch(BeautifulSoup(EMPTY_PAGE, "html.parser"))
         page = OTHER_CARD_PAGE if state == "B" and "f_WT=2" in url else CARD_PAGE
         return Fetch(BeautifulSoup(page, "html.parser"))
@@ -341,9 +344,9 @@ def test_the_draws_run_out_when_every_session_ignores_the_filter():
     assert client.renewals == 2  # renewed between draws, not after the last
 
 
-def test_an_unanswerable_probe_costs_a_draw_and_moves_on():
+def test_an_inconclusive_probe_costs_a_draw_and_moves_on():
     """A failed or cardless probe page proves nothing about the pipeline; redraw."""
-    for state in ("empty", "fail"):
+    for state in ("empty", "fail", "dry-remote"):
         client = SessionClient([state, "B"])
 
         assert acquire_filtering_session(config([query()]), client)

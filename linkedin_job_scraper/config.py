@@ -1,6 +1,7 @@
 import hashlib
 import re
 from enum import Enum, StrEnum
+from itertools import pairwise
 from pathlib import Path
 from typing import Self
 from urllib.parse import quote
@@ -56,6 +57,33 @@ def _map_option(enum_cls: type[Enum], value: str | list[str] | None) -> str:
 
 
 _KEYWORD_TOKEN = re.compile(r'"[^"]*"|[^\s()]+')  # a quoted phrase is one term; parens are separators
+_KEYWORD_LEXER = re.compile(r'"[^"]*"|[()]|[^\s()]+')  # like _KEYWORD_TOKEN, but keeps the parens
+_OPERATORS = {"AND", "OR", "NOT"}
+
+
+def _check_keywords_syntax(expression: str) -> None:
+    """Raise on boolean syntax LinkedIn cannot parse: dangling operators, bad parens, no terms."""
+    tokens = _KEYWORD_LEXER.findall(expression)
+    kinds = [t if t in "()" else "op" if t.upper() in _OPERATORS else "term" for t in tokens]
+    if "term" not in kinds:
+        raise ValueError("keywords hold no search terms")
+
+    depth = 0
+    for kind in kinds:
+        depth += (kind == "(") - (kind == ")")
+        if depth < 0:
+            raise ValueError('")" without a matching "("')
+    if depth:
+        raise ValueError('unclosed "("')
+
+    # Wrapped in one outer group, every remaining misplacement is a bad neighbor pair.
+    for left, right in pairwise(["(", *kinds, ")"]):
+        if (left, right) == ("(", ")"):
+            raise ValueError('empty "()" group')
+        if left in ("(", "op") and right == "op":
+            raise ValueError("an operator with no term before it")
+        if left == "op" and right == ")":
+            raise ValueError("an operator with no term after it")
 
 
 def _keyword_atoms(expression: str) -> list[str]:
@@ -80,6 +108,13 @@ class SearchQuery(BaseModel):
     timespan: str = ""
     workplace_type: list[str] = []  # keep-list: the variants harvested and the types kept; empty means all three
     harvest_type: str = WorkplaceType.UNTAGGED.value  # the type this variant searches; set by harvest_variants
+
+    @field_validator("keywords")
+    @classmethod
+    def _valid_boolean(cls, v: str) -> str:
+        """Reject a boolean expression LinkedIn cannot parse."""
+        _check_keywords_syntax(v)
+        return v
 
     @field_validator("distance", mode="before")
     @classmethod

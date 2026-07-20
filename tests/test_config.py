@@ -113,7 +113,6 @@ def test_an_omitted_title_include_becomes_the_keyword_terms_of_every_query():
         ),
         ("python or Etl and PYTHON", ["python", "etl"]),
         ("c++ OR c# OR .net", ["c++", "c#", ".net"]),
-        ("python OR (etl", ["python", "etl"]),
     ],
 )
 def test_deriving_title_include_survives_exotic_keyword_expressions(keywords, expected):
@@ -123,17 +122,28 @@ def test_deriving_title_include_survives_exotic_keyword_expressions(keywords, ex
 @pytest.mark.parametrize(
     "keywords, reason",
     [
-        ("python NOT junior", "NOT would flatten an exclusion into a way in"),
-        ("", "no terms at all"),
+        ("(OR data OR dati)", "operator right after an open paren"),
+        ("python OR", "trailing operator"),
+        ("python OR (etl", "unclosed paren"),
+        ("python) OR etl", "unmatched close paren"),
+        ("a OR () OR b", "empty group"),
+        ("a AND OR b", "operator run"),
         ("()", "no terms once the parens go"),
         ("AND OR", "operators only"),
+        ("", "no terms at all"),
     ],
 )
-def test_a_keywords_expression_that_cannot_derive_title_include_is_rejected(keywords, reason):
+def test_malformed_keywords_fail_config_load(keywords, reason):
     with pytest.raises(ConfigurationError):
         load_and_validate_config(raw(keywords=keywords))
 
-    assert load_and_validate_config(raw(keywords=keywords) | {"title_include": []}).title_include == []
+
+def test_a_keywords_expression_that_cannot_derive_title_include_is_rejected():
+    """NOT parses fine but cannot flatten into title terms; an explicit title_include lifts the veto."""
+    with pytest.raises(ConfigurationError):
+        load_and_validate_config(raw(keywords="python NOT junior"))
+
+    assert load_and_validate_config(raw(keywords="python NOT junior") | {"title_include": []}).title_include == []
 
 
 @pytest.mark.parametrize(

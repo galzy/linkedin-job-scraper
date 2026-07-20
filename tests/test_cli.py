@@ -19,6 +19,7 @@ def run_cli(*args, log_dir=None):
     """Run the module as a user would, with the log dir pointed away from the project's real logs/."""
     env = os.environ.copy()
     env["TERM"] = "dumb"  # keeps Rich's color off: it splits flag names with escape codes, breaking text asserts
+    env["PYTHONIOENCODING"] = "utf-8"  # the child would otherwise write the console codepage, which we decode as utf-8
     if log_dir is not None:
         env[LOG_DIR_ENV] = str(log_dir)
     return subprocess.run(
@@ -26,6 +27,7 @@ def run_cli(*args, log_dir=None):
         cwd=PROJECT_ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",  # Typer's error boxes break the locale codepage (e.g. cp1255)
         env=env,
     )
 

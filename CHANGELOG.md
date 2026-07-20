@@ -8,6 +8,10 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
 - Keywords syntax validation. A malformed boolean expression (dangling operator, unbalanced or empty
   parens, no terms) now fails config load instead of silently searching for nothing.
 
+### Changed
+- The session probe logs its query and says why a draw was inconclusive (fetch failed, no results
+  even unfiltered, empty remote page) instead of the catch-all "probe unanswerable".
+
 ## [v0.5.0]
 
 ### Added

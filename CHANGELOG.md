@@ -10,7 +10,17 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
 
 ### Changed
 - The session probe logs its query and says why a draw was inconclusive (fetch failed, no results
-  even unfiltered, empty remote page) instead of the catch-all "probe unanswerable".
+  even unfiltered) instead of the catch-all "probe unanswerable".
+- A draw whose remote page is empty while the unfiltered one has cards now counts as the filtering
+  pipeline, where it used to be inconclusive and cost a redraw. Only a session applying `f_WT` can
+  serve nothing remote while the unfiltered page has cards — the non-filtering one serves both the
+  identical list — so the probe was redrawing past the sessions it was looking for, and an hour when
+  the probe query has no remote postings could exhaust all ten draws and abort the run with nothing
+  scraped (2026-07-22: twenty draws, nine of them empty-remote, two runs aborted). The empty page is
+  refetched once before it counts, since the endpoint serves flaky empties and a flaky one here would
+  otherwise keep a non-filtering session and label every job in the run from it. The unfiltered page
+  is fetched first and settles a dry query on its own, so a draw now costs one to three requests
+  rather than always two.
 - The `jobs_filtered` view orders rows newest-first, then by company and title.
 - The refresh due-check drops its posting-date condition and keys on `last_verified` alone.
 - Lowered default RECHECK_DAYS to 3

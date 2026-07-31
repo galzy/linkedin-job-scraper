@@ -322,6 +322,24 @@ class SessionClient:
         return Fetch(BeautifulSoup(page, "html.parser"))
 
 
+class FlakyRemoteClient:
+    """A filtering session whose remote page comes back empty once, then serves its cards."""
+
+    def __init__(self):
+        self.remote_fetches = 0
+        self.renewals = 0
+
+    def renew_session(self) -> None:
+        self.renewals += 1
+
+    def fetch(self, url: str) -> Fetch:
+        if "f_WT=2" not in url:
+            return Fetch(BeautifulSoup(CARD_PAGE, "html.parser"))
+        self.remote_fetches += 1
+        page = EMPTY_PAGE if self.remote_fetches == 1 else OTHER_CARD_PAGE
+        return Fetch(BeautifulSoup(page, "html.parser"))
+
+
 def test_a_filtering_session_is_kept_without_a_renewal():
     client = SessionClient(["B"])
 
@@ -346,11 +364,27 @@ def test_the_draws_run_out_when_every_session_ignores_the_filter():
 
 def test_an_inconclusive_probe_costs_a_draw_and_moves_on():
     """A failed or cardless probe page proves nothing about the pipeline; redraw."""
-    for state in ("empty", "fail", "dry-remote"):
+    for state in ("empty", "fail"):
         client = SessionClient([state, "B"])
 
         assert acquire_filtering_session(config([query()]), client)
         assert client.renewals == 1
+
+
+def test_an_empty_remote_page_under_a_populated_one_is_a_filtering_session():
+    """Only a session applying f_WT can serve nothing remote while the unfiltered page has cards."""
+    client = SessionClient(["dry-remote"])
+
+    assert acquire_filtering_session(config([query()]), client)
+    assert client.renewals == 0
+
+
+def test_a_flaky_empty_remote_page_is_refetched_before_it_counts():
+    """One empty remote page settles nothing; the refetch finds the cards and the comparison runs."""
+    client = FlakyRemoteClient()
+
+    assert acquire_filtering_session(config([query()]), client)
+    assert client.remote_fetches == 2
 
 
 # --- fetch_posting -----------------------------------------------------------

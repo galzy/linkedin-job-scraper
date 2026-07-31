@@ -19,6 +19,7 @@ from linkedin_job_scraper.constants import (
 from linkedin_job_scraper.geo import country_of
 from linkedin_job_scraper.job import Job
 from linkedin_job_scraper.language import description_lang
+from linkedin_job_scraper.signals import stated_locations
 from linkedin_job_scraper.store.schema import (
     JobQueryRow,
     JobRow,
@@ -363,7 +364,7 @@ class JobsDb:
 
         Non-kept means irrelevant or confirmed-closed. A cleared irrelevant row re-fetches its
         description if it later flips relevant; a closed one does not (its posting 404s), and isn't
-        shown regardless. description_lang, read at fetch time, is left intact. Run after the kept set settles.
+        shown regardless. The signals read off it at fetch time are left intact. Run after the kept set settles.
         """
         with self.engine.begin() as conn:
             result = conn.execute(
@@ -447,18 +448,22 @@ class JobsDb:
         """Store fetched descriptions and open-status on rows already stored, matched on job_url.
 
         A job carries either, both, or neither: only the fields that arrived are written, so a failed
-        fetch (both None) touches nothing. A written description is read for its language in the same
-        update. Returns how many descriptions and open-status were written.
+        fetch (both None) touches nothing. A written description is read for its language and for any
+        location it scopes the role to, in the same update. Returns how many descriptions and
+        open-status were written.
         """
         verified_at = datetime.now().isoformat(sep=" ", timespec="seconds")
         described = [
             {
                 "url": job.key,
                 "job_description": job.job_description,
-                "description_lang": description_lang(job.job_description),
+                "description_lang": language,
+                # The language it reads as narrows which country names are worth looking for.
+                "stated_locations": stated_locations(job.job_description, language),
             }
             for job in jobs
             if job.job_description is not None
+            for language in [description_lang(job.job_description)]
         ]
         verified = [
             {"url": job.key, "is_open": job.is_open, "last_verified": verified_at}
@@ -466,7 +471,8 @@ class JobsDb:
             if job.is_open is not None
         ]
         with self.engine.begin() as conn:
-            filled = _update_jobs_by_url(conn, ["job_description", "description_lang"], described) if described else 0
+            columns = ["job_description", "description_lang", "stated_locations"]
+            filled = _update_jobs_by_url(conn, columns, described) if described else 0
             if verified:
                 _update_jobs_by_url(conn, ["is_open", "last_verified"], verified)
         closed = sum(job.is_open is False for job in jobs)

@@ -1,5 +1,6 @@
 """Read the country a job's free-text location names."""
 
+import gettext
 import re
 from collections.abc import Iterable
 from functools import cache, lru_cache
@@ -74,6 +75,50 @@ def country_of(location: str, countries: frozenset[str] = frozenset()) -> str | 
     if country is None and len(segments) == 1:
         country = _metro_country(segments[0], countries)
     return country
+
+
+@cache
+def country_vocabulary(language: str | None = None) -> dict[str, str]:
+    """Every country name to look for in text, lowercased, mapped to its English name.
+
+    English names and the colloquial aliases always; a description's own language on top, since an
+    ad writes "Deutschland" where a card would say "Germany". ISO 3166 ships translated in 163
+    languages, so ``language`` only has to name one — anything without a catalog just adds nothing.
+    """
+    vocabulary = {alias: name for alias, name in _COUNTRY_ALIASES.items()}
+    for country in pycountry.countries:
+        for attribute in ("name", "common_name", "official_name"):
+            if value := getattr(country, attribute, None):
+                vocabulary[value.lower()] = country.name
+    if language:
+        try:
+            catalog = gettext.translation("iso3166-1", pycountry.LOCALES_DIR, languages=[language])
+        except FileNotFoundError:
+            return vocabulary
+        for country in pycountry.countries:
+            vocabulary[catalog.gettext(country.name).lower()] = country.name
+    return vocabulary
+
+
+@cache
+def _major_cities(minimum: int) -> dict[str, str]:
+    """Every city of at least ``minimum`` people, lowercased to its country; most populous wins."""
+    iso = {c.alpha_2: c.name for c in pycountry.countries} | {"XK": "Kosovo"}
+    cities = sorted(geonamescache.GeonamesCache().get_cities().values(), key=lambda c: c["population"])
+    return {
+        city["name"].lower(): country
+        for city in cities
+        if city["population"] >= minimum and (country := iso.get(city["countrycode"]))
+    }
+
+
+def city_country(name: str, minimum: int = 100_000) -> str | None:
+    """The country a well-known city sits in, or None.
+
+    Only cities of ``minimum`` people, and only their own names rather than the alternates, since an
+    ad naming somewhere smaller is likelier a typo or a false friend than a place worth resolving.
+    """
+    return _major_cities(minimum).get(name.strip().lower())
 
 
 def searched_countries(locations: Iterable[str]) -> frozenset[str]:

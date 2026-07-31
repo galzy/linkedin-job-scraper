@@ -1,0 +1,117 @@
+# The phrases that put a place right after them, per language.
+#
+# `stated_locations` reads a country out of a description by looking only where a sentence puts a
+# location. This file is that list of places to look. It lives in the package rather than in
+# `configs/` because it is not a preference: everyone scraping German ads wants "Wohnsitz in Berlin"
+# read the same way, unlike keywords and search locations, which are yours alone.
+#
+# Notation
+#   *            up to three words may sit between, so "remote * in" reads "remote role within"
+#   trailing :   required, for ads that label a field ("Sede di lavoro: Bologna")
+#
+# Supplied for you, so leave them out of the phrases:
+#   - a colon after any phrase, so "based in" also covers "based in: Switzerland"
+#   - the article between the phrase and the place — the, der/die/das, il/la/lo, de/het
+#   - a possessive, so "based in" already covers "based in our Dublin office"
+#   - a city standing in front of the country, so "based in" covers "based in Berlin, Germany"
+#   - case folding
+#
+# Not here, and staying in code: the guards that decide whether a clause is about *you*. Whether
+# "based in Paris" is your requirement or the company's address depends on the words around it, not
+# on the phrase, so it cannot be written as one.
+#
+# Every language is searched with every phrase, whatever the description's own language, because ads
+# mix — a German posting often carries English boilerplate verbatim. `covered` therefore does not
+# filter anything. It is a claim that the phrases were checked against real ads and that
+# tests/test_signals.py asserts them. Do not set it true without adding that test: three Italian
+# phrases sat here reading zero of 139 Italian ads because nothing was watching.
+
+languages:
+  en:
+    covered: true
+    phrases:
+      - based in
+      - located in
+      - living in
+      - residing in
+      - resident in
+      - remote * in
+      - remote * within
+      - home office * in
+      - home office * within
+      - homeoffice * in
+      - homeoffice * within
+      - work from home in
+      - work from home within
+      - anywhere in
+      - from anywhere in
+      - eligible to work in
+      - right to work in
+      - authorised to work in
+      - authorized to work in
+
+  de:
+    covered: true
+    phrases:
+      - innerhalb            # "Homeoffice innerhalb Deutschlands"
+      - innerhalb von
+      - Sitz in
+      - mit Sitz in
+      - Wohnsitz in
+      - mit Wohnsitz in
+      - ansässig in
+      - ansassig in          # the umlaut goes missing often enough to be worth its own line
+      - Arbeitserlaubnis für
+      - Arbeitsgenehmigung für
+
+  it:
+    covered: true
+    phrases:
+      - sede in
+      - sede a
+      - con sede a
+      - "Sede di lavoro:"    # the field label a third of Italian ads use
+      - "Luogo di lavoro:"
+      - da remoto in
+      - in remoto in
+      - residente in
+      - residenti in
+
+  nl:
+    covered: true
+    phrases:
+      - woonachtig in
+      # "gevestigd in" is deliberately absent: it seats the company, not you.
+
+  # Seen in the corpus, never vetted, reading nothing. Each needs its phrases written by someone who
+  # can tell an obligation from an invitation in that language, plus a test, before covered goes true.
+  fi:
+    covered: false
+    phrases: []
+  fr:
+    covered: false
+    phrases: []
+  sv:
+    covered: false
+    phrases: []
+  cs:
+    covered: false
+    phrases: []
+
+# Words standing in for a whole region rather than a named country. A clause reaching one of these is
+# open to somewhere it never names, which is what decides whether an unnamed country still qualifies.
+regions:
+  - EU
+  - EEA
+  - Europe
+  - European Union
+  - EMEA
+  - worldwide
+  - globally
+  - anywhere
+
+# Names no ISO list carries, though ads lean on them constantly.
+informal:
+  the uk: United Kingdom
+  the us: United States
+  usa: United States

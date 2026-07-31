@@ -34,6 +34,14 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
   refusal to sponsor a visa, which scope a role to wherever it already sits without naming a country.
   Read in English only, the language such boilerplate arrives in, and read off the description at
   fetch time like the other signals.
+- `fit_verdict` on `jobs_raw`, the judgment written by hand against the fit rubric — codes and their
+  reasons both, so the row carries why it was turned down and not merely that it was. Nothing in the
+  scraper derives it: a judgment from a person and a guess from a signal would be indistinguishable
+  once stored, and a later config edit would quietly invalidate the guesses. Language stays in
+  `is_relevant`, location stays a signal. `import_verdicts` writes it, carrying a stated code to the
+  rest of the posting's `dup_group` — LinkedIn mints a fresh URL per repost, and one ad currently
+  sits in the database as fifteen rows across seventeen days. A `?` stays on its own row, since it
+  reads that posting's wording; a repost only fills where nothing was written.
 
 ### Changed
 - `is_english` is now `description_lang`, holding the ISO 639-1 code rather than a boolean. The

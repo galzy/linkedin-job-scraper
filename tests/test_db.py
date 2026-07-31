@@ -447,6 +447,24 @@ def test_postings_to_refresh_skips_a_closed_job_still_missing_a_description(db):
     assert db.postings_to_refresh("2024-01-08 00:00:00") == []
 
 
+def test_postings_to_refresh_skips_a_job_already_turned_down(db):
+    """Config keeps it relevant, but whether it is still open stopped mattering once it was judged."""
+    db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/", title="Other")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.import_verdicts({"https://x/1/": "d: not software development"})
+
+    assert [j.key for j in db.postings_to_refresh("2024-01-08 00:00:00")] == ["https://x/2/"]
+
+
+def test_postings_to_refresh_keeps_a_job_only_suspected_of_a_problem(db):
+    """A "?" means revisit, not rejected, so the row stays in the set."""
+    db.insert_jobs([job()])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.import_verdicts({"https://x/1/": "c?: UK listing"})
+
+    assert [j.key for j in db.postings_to_refresh("2024-01-08 00:00:00")] == ["https://x/1/"]
+
+
 def test_a_turned_down_verdict_carries_to_the_postings_reposts(db):
     """LinkedIn mints a fresh URL per repost, so the same ad would otherwise be judged once per row."""
     db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/"), job(job_url="https://x/3/")])

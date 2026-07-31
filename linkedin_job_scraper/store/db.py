@@ -184,10 +184,13 @@ class JobsDb:
         regardless of age. A job is otherwise due when last verified before ``stale_before`` — or never:
         what a re-check discovers is whatever changed since the last look, so that is the clock, not the
         posting date. A confirmed-closed posting is left be, even one still missing a description: a
-        removed listing keeps 404ing, so re-fetching is futile.
+        removed listing keeps 404ing, so re-fetching is futile. So is one already turned down: whether
+        it is still open stopped mattering when it was judged.
         """
         due = or_(JobRow.last_verified.is_(None), JobRow.last_verified < stale_before)
         with self.engine.connect() as conn:
+            judged = conn.execute(select(JobRow.job_url, JobRow.fit_verdict).where(JobRow.fit_verdict.isnot(None)))
+            turned_down = {url for url, verdict in judged if is_firm(verdict)}
             rows = conn.execute(
                 select(*_JOB_FETCH_COLS).where(
                     JobRow.is_relevant.is_(True),
@@ -195,7 +198,7 @@ class JobsDb:
                     or_(JobRow.job_description.is_(None), JobRow.is_open.is_(None), due),
                 )
             ).all()
-        return [Job(**row._asdict()) for row in rows]
+        return [Job(**row._asdict()) for row in rows if row.job_url not in turned_down]
 
     # --- writes --------------------------------------------------------------
 

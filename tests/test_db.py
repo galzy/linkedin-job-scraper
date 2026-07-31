@@ -323,7 +323,9 @@ def test_the_filtered_view_hides_closed_jobs_but_keeps_open_and_unchecked_ones(d
 def test_clear_dead_descriptions_drops_text_on_rows_the_view_hides(db):
     """Descriptions on non-kept rows (irrelevant or closed) are dropped; kept text and its signals survive."""
     english = "We are hiring a backend engineer to build data pipelines in Python."
-    db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
+    db.insert_jobs(
+        [job(job_url="https://x/1/"), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")]
+    )
     db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")  # x/3 Chef is irrelevant
     db.record_postings(
         [

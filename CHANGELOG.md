@@ -9,6 +9,10 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
   parens, no terms) now fails config load instead of silently searching for nothing.
 
 ### Changed
+- `is_english` is now `description_lang`, holding the ISO 639-1 code rather than a boolean. The
+  language a description is written in was always the underlying signal; a code keeps which one, so
+  an Italian ad and a German one are no longer both just "not English". (Replaced in the existing
+  database by a one-off `ALTER TABLE` and backfilled; new databases get it from the model.)
 - The session probe logs its query and says why a draw was inconclusive (fetch failed, no results
   even unfiltered) instead of the catch-all "probe unanswerable".
 - A draw whose remote page is empty while the unfiltered one has cards now counts as the filtering

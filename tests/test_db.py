@@ -264,8 +264,8 @@ def test_record_postings_fills_the_matching_row(db):
     }
 
 
-def test_record_postings_flags_the_description_language(db):
-    """A written description is judged English or not in the same update; an undescribed row stays NULL."""
+def test_record_postings_names_the_description_language(db):
+    """A written description is named its language in the same update; an undescribed row stays NULL."""
     db.insert_jobs([job(), job(job_url="https://x/2/"), job(job_url="https://x/3/")])
     db.record_postings(
         [
@@ -274,7 +274,8 @@ def test_record_postings_flags_the_description_language(db):
         ]
     )
 
-    assert dict(rows(db, "job_url", "is_english")) == {"https://x/1/": 1, "https://x/2/": 0, "https://x/3/": None}
+    expected = {"https://x/1/": "en", "https://x/2/": "it", "https://x/3/": None}
+    assert dict(rows(db, "job_url", "description_lang")) == expected
 
 
 def test_record_postings_stamps_open_status_and_verification_time(db):
@@ -307,7 +308,7 @@ def test_the_filtered_view_hides_closed_jobs_but_keeps_open_and_unchecked_ones(d
 
 
 def test_clear_dead_descriptions_drops_text_on_rows_the_view_hides(db):
-    """Descriptions on non-kept rows (irrelevant or closed) are dropped; kept ones and is_english survive."""
+    """Descriptions on non-kept rows (irrelevant or closed) are dropped; kept ones and their language survive."""
     english = "We are hiring a backend engineer to build data pipelines in Python."
     db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
     db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")  # x/3 Chef is irrelevant
@@ -325,7 +326,7 @@ def test_clear_dead_descriptions_drops_text_on_rows_the_view_hides(db):
         "https://x/2/": None,
         "https://x/3/": None,
     }
-    assert {e for (e,) in rows(db, "is_english")} == {1}  # judged at fetch time, untouched by the clear
+    assert {c for (c,) in rows(db, "description_lang")} == {"en"}  # read at fetch time, untouched by the clear
     assert db.clear_dead_descriptions() == 0  # nothing left; a row already NULL is not recounted
 
 

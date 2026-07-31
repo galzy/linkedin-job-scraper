@@ -18,7 +18,7 @@ from linkedin_job_scraper.constants import (
 )
 from linkedin_job_scraper.geo import country_of
 from linkedin_job_scraper.job import Job
-from linkedin_job_scraper.language import is_english
+from linkedin_job_scraper.language import description_lang
 from linkedin_job_scraper.store.schema import (
     JobQueryRow,
     JobRow,
@@ -363,7 +363,7 @@ class JobsDb:
 
         Non-kept means irrelevant or confirmed-closed. A cleared irrelevant row re-fetches its
         description if it later flips relevant; a closed one does not (its posting 404s), and isn't
-        shown regardless. is_english, written at fetch time, is left intact. Run after the kept set settles.
+        shown regardless. description_lang, read at fetch time, is left intact. Run after the kept set settles.
         """
         with self.engine.begin() as conn:
             result = conn.execute(
@@ -447,12 +447,16 @@ class JobsDb:
         """Store fetched descriptions and open-status on rows already stored, matched on job_url.
 
         A job carries either, both, or neither: only the fields that arrived are written, so a failed
-        fetch (both None) touches nothing. A written description is judged English or not in the same
+        fetch (both None) touches nothing. A written description is read for its language in the same
         update. Returns how many descriptions and open-status were written.
         """
         verified_at = datetime.now().isoformat(sep=" ", timespec="seconds")
         described = [
-            {"url": job.key, "job_description": job.job_description, "is_english": is_english(job.job_description)}
+            {
+                "url": job.key,
+                "job_description": job.job_description,
+                "description_lang": description_lang(job.job_description),
+            }
             for job in jobs
             if job.job_description is not None
         ]
@@ -462,7 +466,7 @@ class JobsDb:
             if job.is_open is not None
         ]
         with self.engine.begin() as conn:
-            filled = _update_jobs_by_url(conn, ["job_description", "is_english"], described) if described else 0
+            filled = _update_jobs_by_url(conn, ["job_description", "description_lang"], described) if described else 0
             if verified:
                 _update_jobs_by_url(conn, ["is_open", "last_verified"], verified)
         closed = sum(job.is_open is False for job in jobs)

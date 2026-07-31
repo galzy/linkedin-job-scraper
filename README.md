@@ -90,7 +90,7 @@ uv run linkedin-job-scraper scrape configs/other.yaml --max-pages 2 # another co
 | `scrape [config] [--max-pages 1-100]` | Scrape, filter, and store jobs, then refresh the relevant ones — fetching descriptions and re-checking open-status. |
 | `init-config <path>` | Write a starter config from the sample. Refuses to overwrite an existing file. |
 | `recompute [config]` | Re-derive a config's verdicts over every stored job — flipping `is_relevant`, then recounting `dup_count` for the groups that shift — a filter edit's effect without waiting for the next scrape. |
-| `refresh [config] [--recheck-days N]` | Fetch missing data and re-check open-status for stored relevant jobs: anything still lacking a description or an open/closed verdict is fetched on sight; the rest are re-checked once older than N days (default 7) and not verified since. Uses the config's `http` settings only, not the queries. |
+| `refresh [config] [--recheck-days N]` | Fetch missing data and re-check open-status for stored relevant jobs: anything still lacking a description or an open/closed verdict is fetched on sight; the rest are re-checked once older than N days (default 3) and not verified since. Uses the config's `http` settings only, not the queries. |
 | `status` | Print the last run — when, how it ended, its counts — and the stored-job totals. |
 | `export [path] [--all] [--no-descriptions]` | Write stored jobs from DB to a CSV — the kept (relevant, not closed) set by default, every stored row with `--all`. Reads only the database; overwrites `reports/jobs.csv` unless given a path. |
 | `prune <days>` | Permanently delete stored jobs that are irrelevant or closed and older than N days. Asks for confirmation twice; needs an interactive terminal. |

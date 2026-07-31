@@ -36,6 +36,7 @@ class JobRow(SqlBase):
     country: Mapped[str | None] = mapped_column(default=None)
     job_description: Mapped[str | None] = mapped_column(default=None)
     description_lang: Mapped[str | None] = mapped_column(default=None)  # ISO 639-1, NULL until a description lands
+    stated_locations: Mapped[str | None] = mapped_column(default=None)  # where the ad says you must be; NULL if unsaid
     workplace_type: Mapped[str] = mapped_column(default="untagged")
     first_seen: Mapped[str]
     last_seen: Mapped[str]

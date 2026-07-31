@@ -7,6 +7,33 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
 ### Added
 - Keywords syntax validation. A malformed boolean expression (dangling operator, unbalanced or empty
   parens, no terms) now fails config load instead of silently searching for nothing.
+- `stated_locations` on `jobs_raw`: where the ad's own text says you must be, comma-separated and
+  normalized to English, with `EU` standing in for a clause open to the whole region. Read from the
+  description by the new `signals` module, so it can disagree with `country`, which comes from the
+  card — a listing tagged Italy whose body reads "fully remote role within the UK" now says so in a
+  column. Country names come from ISO 3166, which pycountry ships translated in 163 languages, so
+  the ad's own `description_lang` decides which names are looked for and a German ad naming
+  "Deutschland" reads the same as an English one naming "Germany". A clause naming only a city is
+  resolved through the country that city sits in, so "based in our London office" reads as the UK.
+  Matching is anchored on the phrases that put a place in location position ("based in", "living
+  in", "anywhere in", "right to work in", "innerhalb", "Arbeitserlaubnis für", "residente in",
+  "woonachtig in"), which is what keeps vocabularies that size from firing on ordinary prose.
+  Clauses about someone else are skipped: a pay band ("for roles based in X, the salary range is"),
+  a vendor's address, where your colleagues sit, and a firm's own seat ("we're based in Paris but
+  open to remote work"). (Added to the existing database by a one-off `ALTER TABLE` and backfilled
+  over its stored descriptions; new databases get it from the model.)
+- `location_phrases.yaml`, holding the phrases each language puts a place after, so adding a language
+  is a data edit rather than a regex one. The file carries the phrases, the regions and the informal
+  country names; the guards that decide whether a clause is about *you* stay in code, since that
+  turns on the words around the phrase rather than the phrase. Every language it marks `covered` must
+  appear in `tests/test_signals.py`, which is enforced by a test: three Italian phrases had been
+  sitting in the code reading zero of 139 Italian ads, because nothing asserted they worked. Adding
+  the `Sede/Luogo di lavoro:` label that Italian ads actually use took Italian from 0% to 6% of its
+  rows. Finnish, French, Swedish and Czech are listed and marked uncovered rather than left unsaid.
+- `signals.work_eligibility`, reading the bars an ad sets on who may take it: a security clearance or
+  a refusal to sponsor a visa, which scope a role to wherever it already sits without naming a
+  country. Read in English only, the language such boilerplate arrives in. No column holds it yet —
+  the judging that would consume it still runs outside the scraper.
 
 ### Changed
 - `is_english` is now `description_lang`, holding the ISO 639-1 code rather than a boolean. The

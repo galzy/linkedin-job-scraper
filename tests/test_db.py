@@ -278,6 +278,19 @@ def test_record_postings_names_the_description_language(db):
     assert dict(rows(db, "job_url", "description_lang")) == expected
 
 
+def test_record_postings_reads_the_location_the_ad_scopes_the_role_to(db):
+    """The scope is read off the same description; an ad that names none leaves the column NULL."""
+    db.insert_jobs([job(), job(job_url="https://x/2/")])
+    db.record_postings(
+        [
+            job(job_description="This is a fully remote role within the UK, building backend services."),
+            job(job_url="https://x/2/", job_description="A backend role building data pipelines in Python."),
+        ]
+    )
+
+    assert dict(rows(db, "job_url", "stated_locations")) == {"https://x/1/": "United Kingdom", "https://x/2/": None}
+
+
 def test_record_postings_stamps_open_status_and_verification_time(db):
     db.insert_jobs([job(), job(job_url="https://x/2/")])
     counts = db.record_postings([job(is_open=True), job(job_url="https://x/2/", is_open=False)])
@@ -308,7 +321,7 @@ def test_the_filtered_view_hides_closed_jobs_but_keeps_open_and_unchecked_ones(d
 
 
 def test_clear_dead_descriptions_drops_text_on_rows_the_view_hides(db):
-    """Descriptions on non-kept rows (irrelevant or closed) are dropped; kept ones and their language survive."""
+    """Descriptions on non-kept rows (irrelevant or closed) are dropped; kept text and its signals survive."""
     english = "We are hiring a backend engineer to build data pipelines in Python."
     db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
     db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")  # x/3 Chef is irrelevant

@@ -45,10 +45,14 @@ class _Probe(StrEnum):
     """One session draw's verdict, worded for the log."""
 
     FILTERING = "filtering pipeline, keeping it"
+    DRY_REMOTE = "filtering pipeline with nothing remote, keeping it"
     NON_FILTERING = "non-filtering pipeline"
     FETCH_FAILED = "a probe page failed to fetch"
     NO_RESULTS = "no results even unfiltered; dry query or a flaky page"
-    NO_REMOTE = "remote page empty, nothing to compare"
+
+
+#: The verdicts that settle on a filtering session; every other one costs a draw.
+_KEEPS = frozenset({_Probe.FILTERING, _Probe.DRY_REMOTE})
 
 
 def scrape_query(query: SearchQuery, client: HttpClient, tag: str, max_pages: int = MAX_PAGES) -> QueryResult:
@@ -131,9 +135,9 @@ def acquire_filtering_session(config: Config, client: HttpClient, max_draws: int
     """Renew the client's session until LinkedIn deals one that honors the workplace filter.
 
     Each guest session is dealt one of two pipelines for its whole life: one applies f_WT,
-    the other ignores it and serves every variant the identical unfiltered list. Two requests
-    per draw. False means no draw landed the filtering pipeline; the caller should abort the
-    run, since workplace labels from a non-filtering session would be fiction.
+    the other ignores it and serves every variant the identical unfiltered list. One to three
+    requests per draw. False means no draw landed the filtering pipeline; the caller should
+    abort the run, since workplace labels from a non-filtering session would be fiction.
     """
     probe = config.search_queries[0]
     logger.info(f"Probing sessions with [{probe.label}]")
@@ -142,7 +146,7 @@ def acquire_filtering_session(config: Config, client: HttpClient, max_draws: int
             client.renew_session()
         verdict = _probe_session(probe, client)
         logger.info(f"Session draw {draw}/{max_draws}: {verdict}")
-        if verdict is _Probe.FILTERING:
+        if verdict in _KEEPS:
             return True
     return False
 
@@ -152,19 +156,28 @@ def _probe_session(query: SearchQuery, client: HttpClient) -> _Probe:
 
     The non-filtering pipeline serves both the identical page; the filtering one gives them
     nearly disjoint pages — nothing in between has been observed. Remote is the probe because
-    its honest first page least resembles the unfiltered one. A failed or empty page proves
-    nothing, so those draws report why instead of a pipeline.
+    its honest first page least resembles the unfiltered one. An empty remote page under a
+    populated unfiltered one says the same thing at its limit — the filter ran and matched
+    nothing — but only once a refetch confirms it, since the endpoint serves flaky empties.
+    A failed page, or one empty even unfiltered, settles nothing.
     """
-    variants = (WorkplaceType.REMOTE, WorkplaceType.UNTAGGED)
-    remote, untagged = [
-        client.fetch(query.model_copy(update={"harvest_type": t.value}).page_url(0)).soup for t in variants
-    ]
-    if remote is None or untagged is None:
+    remote_url, untagged_url = (
+        query.model_copy(update={"harvest_type": t.value}).page_url(0)
+        for t in (WorkplaceType.REMOTE, WorkplaceType.UNTAGGED)
+    )
+    untagged = client.fetch(untagged_url).soup
+    if untagged is None:
         return _Probe.FETCH_FAILED
     if not has_job_cards(untagged):
         return _Probe.NO_RESULTS
-    if not has_job_cards(remote):
-        return _Probe.NO_REMOTE
+    for _ in range(2):
+        remote = client.fetch(remote_url).soup
+        if remote is None:
+            return _Probe.FETCH_FAILED
+        if has_job_cards(remote):
+            break
+    else:
+        return _Probe.DRY_REMOTE
     remote_ids, untagged_ids = ([job.job_url for job in parse_page_jobs(page)] for page in (remote, untagged))
     return _Probe.FILTERING if remote_ids != untagged_ids else _Probe.NON_FILTERING
 

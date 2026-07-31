@@ -291,6 +291,19 @@ def test_record_postings_reads_the_location_the_ad_scopes_the_role_to(db):
     assert dict(rows(db, "job_url", "stated_locations")) == {"https://x/1/": "United Kingdom", "https://x/2/": None}
 
 
+def test_record_postings_reads_the_bars_the_ad_sets_on_who_may_take_it(db):
+    """Read off the same description; an ad setting none leaves the column NULL, the ordinary case."""
+    db.insert_jobs([job(), job(job_url="https://x/2/")])
+    db.record_postings(
+        [
+            job(job_description="We cannot offer visa sponsorship, so you must already have the right to work."),
+            job(job_url="https://x/2/", job_description="A backend role building data pipelines in Python."),
+        ]
+    )
+
+    assert dict(rows(db, "job_url", "work_eligibility")) == {"https://x/1/": "no sponsorship", "https://x/2/": None}
+
+
 def test_record_postings_stamps_open_status_and_verification_time(db):
     db.insert_jobs([job(), job(job_url="https://x/2/")])
     counts = db.record_postings([job(is_open=True), job(job_url="https://x/2/", is_open=False)])

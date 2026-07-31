@@ -43,6 +43,7 @@ class JobRow(SqlBase):
     last_seen: Mapped[str]
     runs_seen: Mapped[int] = mapped_column(default=1)
     is_relevant: Mapped[bool | None] = mapped_column(default=None)  # NULL until refresh_relevance first judges it
+    fit_verdict: Mapped[str | None] = mapped_column(default=None)  # the hand-written fit verdict; NULL until judged
     is_open: Mapped[bool | None] = mapped_column(default=None)  # NULL until first verified against the posting page
     last_verified: Mapped[str | None] = mapped_column(default=None)  # when is_open was last checked
     # A posting's identity for spotting duplicates: its title and company, normalized.

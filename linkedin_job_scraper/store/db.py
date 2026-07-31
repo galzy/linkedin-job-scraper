@@ -38,6 +38,7 @@ from linkedin_job_scraper.store.statements import (
     _row,
     _update_jobs_by_url,
 )
+from linkedin_job_scraper.verdicts import is_firm
 
 
 def _apply_pragmas(dbapi_connection: sqlite3.Connection, _record) -> None:
@@ -332,6 +333,31 @@ class JobsDb:
                 _update_jobs_by_url(conn, ["country"], updates)
 
         return len(updates)
+
+    def import_verdicts(self, verdicts: dict[str, str]) -> tuple[int, int]:
+        """Store fit verdicts by job_url; returns rows given one and reposts that inherited one.
+
+        A stated code turns down the job, so it carries to the rest of its dup_group; a "?" reads
+        this posting's wording and stays put. A repost only fills where nothing was written.
+        """
+        if not verdicts:
+            return 0, 0
+        with self.engine.begin() as conn:
+            updates = [{"url": url, "fit_verdict": verdict} for url, verdict in verdicts.items()]
+            given = _update_jobs_by_url(conn, ["fit_verdict"], updates)
+            named = select(JobRow.job_url, JobRow.dup_group).where(JobRow.job_url.in_(verdicts))
+            groups = dict(conn.execute(named).all())
+            inherited = sum(
+                conn.execute(
+                    update(JobRow)
+                    .where(JobRow.dup_group == groups[url], JobRow.fit_verdict.is_(None))
+                    .values(fit_verdict=verdict)
+                ).rowcount
+                for url, verdict in verdicts.items()
+                if url in groups and is_firm(verdict)
+            )
+        logger.info(f"Imported {given:,} fit verdicts; {inherited:,} reposts inherited one")
+        return given, inherited
 
     def refresh_dup_counts(self) -> int:
         """Recount how many other kept rows share each ``dup_group``, writing dup_count on every row.

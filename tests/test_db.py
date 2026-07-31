@@ -447,6 +447,40 @@ def test_postings_to_refresh_skips_a_closed_job_still_missing_a_description(db):
     assert db.postings_to_refresh("2024-01-08 00:00:00") == []
 
 
+def test_a_turned_down_verdict_carries_to_the_postings_reposts(db):
+    """LinkedIn mints a fresh URL per repost, so the same ad would otherwise be judged once per row."""
+    db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/"), job(job_url="https://x/3/")])
+
+    assert db.import_verdicts({"https://x/1/": "a: RAL EUR 35k"}) == (1, 2)
+    assert {v for (v,) in rows(db, "fit_verdict")} == {"a: RAL EUR 35k"}
+
+
+def test_a_suspicion_stays_on_the_row_it_was_written_about(db):
+    """A "?" reads this posting's wording, which a repost may have changed."""
+    db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/")])
+
+    assert db.import_verdicts({"https://x/1/": "a?: salary withheld"}) == (1, 0)
+    assert dict(rows(db, "job_url", "fit_verdict")) == {"https://x/1/": "a?: salary withheld", "https://x/2/": None}
+
+
+def test_an_imported_verdict_never_overwrites_one_a_repost_already_carries(db):
+    """The row named in the import takes its own verdict; only an unjudged repost inherits."""
+    db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/")])
+    db.import_verdicts({"https://x/2/": "g: wrong stack"})
+    db.import_verdicts({"https://x/1/": "a: RAL EUR 35k"})
+
+    stored = dict(rows(db, "job_url", "fit_verdict"))
+    assert stored == {"https://x/1/": "a: RAL EUR 35k", "https://x/2/": "g: wrong stack"}
+
+
+def test_a_verdict_does_not_reach_a_different_posting(db):
+    db.insert_jobs([job(job_url="https://x/1/"), job(title="Chef", job_url="https://x/2/")])
+    db.import_verdicts({"https://x/1/": "d: not software development"})
+
+    stored = dict(rows(db, "job_url", "fit_verdict"))
+    assert stored == {"https://x/1/": "d: not software development", "https://x/2/": None}
+
+
 def test_postings_to_refresh_ages_a_dateless_card_by_first_seen(db):
     with clock("2024-01-01 00:00:00"):
         db.insert_jobs([job(date="")])  # no posting date, so first_seen stands in for it

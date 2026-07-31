@@ -30,10 +30,10 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
   sitting in the code reading zero of 139 Italian ads, because nothing asserted they worked. Adding
   the `Sede/Luogo di lavoro:` label that Italian ads actually use took Italian from 0% to 6% of its
   rows. Finnish, French, Swedish and Czech are listed and marked uncovered rather than left unsaid.
-- `signals.work_eligibility`, reading the bars an ad sets on who may take it: a security clearance or
-  a refusal to sponsor a visa, which scope a role to wherever it already sits without naming a
-  country. Read in English only, the language such boilerplate arrives in. No column holds it yet —
-  the judging that would consume it still runs outside the scraper.
+- `work_eligibility` on `jobs_raw`, the bars an ad sets on who may take it: a security clearance or a
+  refusal to sponsor a visa, which scope a role to wherever it already sits without naming a country.
+  Read in English only, the language such boilerplate arrives in, and read off the description at
+  fetch time like the other signals.
 
 ### Changed
 - `is_english` is now `description_lang`, holding the ISO 639-1 code rather than a boolean. The

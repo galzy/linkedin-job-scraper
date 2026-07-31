@@ -19,7 +19,7 @@ from linkedin_job_scraper.constants import (
 from linkedin_job_scraper.geo import country_of
 from linkedin_job_scraper.job import Job
 from linkedin_job_scraper.language import description_lang
-from linkedin_job_scraper.signals import stated_locations
+from linkedin_job_scraper.signals import stated_locations, work_eligibility
 from linkedin_job_scraper.store.schema import (
     JobQueryRow,
     JobRow,
@@ -460,6 +460,7 @@ class JobsDb:
                 "description_lang": language,
                 # The language it reads as narrows which country names are worth looking for.
                 "stated_locations": stated_locations(job.job_description, language),
+                "work_eligibility": work_eligibility(job.job_description),
             }
             for job in jobs
             if job.job_description is not None
@@ -471,7 +472,7 @@ class JobsDb:
             if job.is_open is not None
         ]
         with self.engine.begin() as conn:
-            columns = ["job_description", "description_lang", "stated_locations"]
+            columns = ["job_description", "description_lang", "stated_locations", "work_eligibility"]
             filled = _update_jobs_by_url(conn, columns, described) if described else 0
             if verified:
                 _update_jobs_by_url(conn, ["is_open", "last_verified"], verified)

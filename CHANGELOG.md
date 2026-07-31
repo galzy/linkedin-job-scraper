@@ -44,6 +44,10 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
   reads that posting's wording; a repost only fills where nothing was written.
 
 ### Changed
+- The refresh phase skips a posting already turned down outright. The config still keeps it relevant,
+  but whether it is still open stopped mattering the moment it was judged, and re-confirming those
+  was half the work: of 2,198 relevant, not-closed rows, 1,011 carry a stated code. Rows carrying
+  nothing but `?` codes stay in the set — a suspicion means revisit, not rejected.
 - `is_english` is now `description_lang`, holding the ISO 639-1 code rather than a boolean. The
   language a description is written in was always the underlying signal; a code keeps which one, so
   an Italian ad and a German one are no longer both just "not English". (Replaced in the existing

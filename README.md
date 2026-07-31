@@ -128,7 +128,7 @@ Every run writes each job it scrapes to **`jobs_raw`** — raw in that it holds 
 | `runs_seen` | How many runs surfaced this job — one per run, however many searches found it. |
 | `is_relevant` | Whether the config's filters keep the job. `NULL` until first judged, then recomputed every run. |
 | `job_description` | `NULL` until the job passes the filters, then its full text — or `Could not find job description` when the page genuinely has none. Dropped back to `NULL` if the job later stops being kept (rejected or closed); it re-fetches should it become relevant again. |
-| `is_english` | Whether the description reads as English — a rough proxy for a role open to non-local candidates. `1`/`0` once a description is fetched; `NULL` while none exists or the text is too short to judge. |
+| `description_lang` | The ISO 639-1 code the description reads as (`en`, `de`, `it`). A local-language ad usually wants that language, so it's a rough proxy for whether a role is open to non-local candidates. `NULL` while no description exists or the text is too short to judge. |
 | `is_open` | Whether the posting still accepts applications. Starts `1` (presumed open — it just surfaced in search), then a posting-page fetch settles it; `0` once it closes. `NULL` only on rows stored before this was tracked. |
 | `last_verified` | When `is_open` was last confirmed by fetching the page; `NULL` until that first fetch (the opening presumption is not a check). |
 | `dup_group` | The posting's identity across the URLs LinkedIn mints for reposts and per-city fan-out: its title and company, lowercased and trimmed. Generated, so it never drifts. |

@@ -42,6 +42,8 @@ everything here.
 - `search_queries` (array, required) — one or more searches, each with:
   - `keywords` (string, required) — a boolean expression of `OR`, `AND`, and parentheses. LinkedIn
     matches it against the **whole posting**, not just the title (see [How it works](#how-it-works)).
+    A malformed expression — dangling operator, unbalanced or empty parens, no terms — fails config
+    load rather than silently searching for nothing.
   - `location` (string or array, required) — a list runs one query per location, everything else shared.
   - `distance` (string) — max radius from `location`. Omit for none. Names: `ANY` (same as omitting),
     `KM_0` (the resolved point only), `KM_8`, `KM_16`, `KM_40`, `KM_80`, `KM_160`.
@@ -90,7 +92,7 @@ uv run linkedin-job-scraper scrape configs/other.yaml --max-pages 2 # another co
 | `scrape [config] [--max-pages 1-100]` | Scrape, filter, and store jobs, then refresh the relevant ones — fetching descriptions and re-checking open-status. |
 | `init-config <path>` | Write a starter config from the sample. Refuses to overwrite an existing file. |
 | `recompute [config]` | Re-derive a config's verdicts over every stored job — flipping `is_relevant`, then recounting `dup_count` for the groups that shift — a filter edit's effect without waiting for the next scrape. |
-| `refresh [config] [--recheck-days N]` | Fetch missing data and re-check open-status for stored relevant jobs: anything still lacking a description or an open/closed verdict is fetched on sight; the rest are re-checked once older than N days (default 3) and not verified since. Uses the config's `http` settings only, not the queries. |
+| `refresh [config] [--recheck-days N]` | Fetch missing data and re-check open-status for stored relevant jobs: anything still lacking a description or an open/closed verdict is fetched on sight; the rest are re-checked once older than N days (default 3) and not verified since. A posting turned down by a stated `fit_verdict` code is skipped. Uses the config's `http` settings only, not the queries. |
 | `status` | Print the last run — when, how it ended, its counts — and the stored-job totals. |
 | `export [path] [--all] [--no-descriptions]` | Write stored jobs from DB to a CSV — the kept (relevant, not closed) set by default, every stored row with `--all`. Reads only the database; overwrites `reports/jobs.csv` unless given a path. |
 | `prune <days>` | Permanently delete stored jobs that are irrelevant or closed and older than N days. Asks for confirmation twice; needs an interactive terminal. |
@@ -138,8 +140,8 @@ Every run writes each job it scrapes to **`jobs_raw`** — raw in that it holds 
 | `dup_count` | How many *other* kept (relevant, not-closed) rows share this `dup_group`; `0` for a lone posting. `NULL` until first counted, then recomputed every run. |
 
 Day to day, query the **`jobs_filtered`** view — `jobs_raw` minus the rejected and closed postings (a
-not-yet-checked job stays visible). One job can land under several URLs (reposts, per-city fan-out), so
-each kept row carries `dup_count`.
+not-yet-checked job stays visible), newest first, then by company and title. One job can land under
+several URLs (reposts, per-city fan-out), so each kept row carries `dup_count`.
 
 **Provenance tables.** Four more tables record where the jobs came from: `queries` is every distinct
 search, keyed by a content hash; `job_queries` records which query found which job (with a per-query
@@ -181,9 +183,11 @@ the description fetches. The keep-list is thus both a search plan and a filter: 
 
 **The session draw (why a run probes first).** LinkedIn's guest endpoint deals each fresh session one
 of two pipelines, fixed for its life: one honors the workplace filter, the other ignores it and
-serves every variant the same unfiltered list. The draw is roughly a coin flip, so each run probes —
-remote page 1 vs. catch-all page 1; identical means non-filtering — and redraws up to 10 times. If
-every draw misses, the run aborts with exit 4 rather than fake every label.
+serves every variant the same unfiltered list. The draw is roughly a coin flip, so each run probes:
+remote page 1 vs. catch-all page 1. Identical lists mean non-filtering; an empty remote page against a
+catch-all with cards means filtering, since only a session honoring the filter can serve nothing
+remote. It redraws up to 10 times, and if every draw misses, the run aborts with exit 4 rather than
+fake every label.
 
 **Empty pages and blocks.** A block can also arrive as an empty `200`, indistinguishable from a query
 that has run out. Two guards: an empty page is confirmed by two consecutive refetches (the endpoint

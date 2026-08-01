@@ -137,7 +137,7 @@ def status() -> None:
         )
     print(
         f"Stored: {counts['stored']} jobs, {counts['relevant']} relevant,"
-        f" {counts['missing_descriptions']} missing descriptions"
+        f" {counts['missing_descriptions']} missing descriptions, {counts['unjudged']} unjudged"
     )
 
 

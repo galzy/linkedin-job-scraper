@@ -24,6 +24,8 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
   would be indistinguishable once stored. `import_verdicts` writes it, carrying a stated code to the
   rest of the posting's `dup_group`, since LinkedIn mints a fresh URL per repost; a `?` stays on its
   own row, and a repost only fills where nothing was written.
+- `fit_cohort`, the rows awaiting a verdict — relevant, not confirmed-closed, and carrying none yet —
+  newest first, with `since` to scope a pass to one run's arrivals. `status` counts the same set.
 
 ### Changed
 - The refresh phase skips a posting already turned down outright — whether it is still open stopped

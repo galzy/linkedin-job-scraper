@@ -202,7 +202,7 @@ def test_status_prints_the_last_run_and_the_stored_totals(tmp_path, monkeypatch,
     out = capsys.readouterr().out
     assert "Last run: 2024-01-01 09:00:00 -> 2024-01-01 09:05:00 (completed)" in out
     assert "scraped 2, deduped 2, relevant 1, added 2, flipped 0" in out
-    assert "Stored: 2 jobs, 1 relevant, 1 missing descriptions" in out
+    assert "Stored: 2 jobs, 1 relevant, 1 missing descriptions, 1 unjudged" in out
 
 
 def test_status_before_any_recorded_run_still_reports_totals(tmp_path, monkeypatch, capsys):
@@ -219,7 +219,7 @@ def test_status_before_any_recorded_run_still_reports_totals(tmp_path, monkeypat
 
     out = capsys.readouterr().out
     assert "No runs recorded yet" in out
-    assert "Stored: 0 jobs, 0 relevant, 0 missing descriptions" in out
+    assert "Stored: 0 jobs, 0 relevant, 0 missing descriptions, 0 unjudged" in out
 
 
 def _read_csv(path):

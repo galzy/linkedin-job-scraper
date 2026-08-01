@@ -499,6 +499,45 @@ def test_a_verdict_does_not_reach_a_different_posting(db):
     assert stored == {"https://x/1/": "d: not software development", "https://x/2/": None}
 
 
+def test_fit_cohort_is_the_relevant_open_rows_nobody_has_judged(db):
+    db.insert_jobs([job(), job(title="Other", job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: title != "Chef")
+    db.import_verdicts({"https://x/1/": "d: not software development"})
+
+    assert [row.job_url for row in db.fit_cohort()] == ["https://x/2/"]
+
+
+def test_fit_cohort_leaves_out_a_posting_the_check_found_closed(db):
+    """A removed listing is not worth reading, judged or not."""
+    db.insert_jobs([job(), job(title="Other", job_url="https://x/2/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.record_postings([job(job_description="Gone.", is_open=False)])
+
+    assert [row.job_url for row in db.fit_cohort()] == ["https://x/2/"]
+
+
+def test_fit_cohort_reads_newest_first_and_can_start_at_a_date(db):
+    with clock("2024-01-01 00:00:00"):
+        db.insert_jobs([job(date="2024-01-01")])
+    with clock("2024-02-01 00:00:00"):
+        db.insert_jobs([job(title="Other", date="2024-02-01", job_url="https://x/2/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+
+    assert [row.job_url for row in db.fit_cohort()] == ["https://x/2/", "https://x/1/"]
+    # since reads first_seen, not the posting date: it scopes a pass to what one run brought in
+    assert [row.job_url for row in db.fit_cohort(since="2024-01-15")] == ["https://x/2/"]
+
+
+def test_fit_cohort_carries_the_signals_judging_reads_beside_the_description(db):
+    db.insert_jobs([job()])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.record_postings([job(job_description="We cannot offer visa sponsorship for this role.")])
+
+    (row,) = db.fit_cohort()
+    assert row.description_lang == "en"
+    assert row.work_eligibility == "no sponsorship"
+
+
 def test_postings_to_refresh_ages_a_dateless_card_by_first_seen(db):
     with clock("2024-01-01 00:00:00"):
         db.insert_jobs([job(date="")])  # no posting date, so first_seen stands in for it
@@ -545,7 +584,7 @@ def test_a_corrupt_database_is_quarantined_and_rebuilt(tmp_path):
     database.create_schema()  # detects corruption, quarantines the file, rebuilds
 
     assert len(list(tmp_path.glob("linkedin_jobs.db.corrupt-*"))) == 1  # the bad file, kept aside
-    assert database.totals() == {"stored": 0, "relevant": 0, "missing_descriptions": 0}  # fresh schema
+    assert database.totals() == {"stored": 0, "relevant": 0, "missing_descriptions": 0, "unjudged": 0}  # fresh schema
     database.close()
 
 
@@ -740,11 +779,22 @@ def test_totals_counts_stored_relevant_and_still_undescribed(db):
     db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
     db.record_postings([job(job_description="Build things.")])
 
-    assert db.totals() == {"stored": 3, "relevant": 2, "missing_descriptions": 1}
+    assert db.totals() == {"stored": 3, "relevant": 2, "missing_descriptions": 1, "unjudged": 2}
 
 
 def test_totals_on_an_empty_database_are_zero(db):
-    assert db.totals() == {"stored": 0, "relevant": 0, "missing_descriptions": 0}
+    assert db.totals() == {"stored": 0, "relevant": 0, "missing_descriptions": 0, "unjudged": 0}
+
+
+def test_totals_stop_counting_a_row_as_unjudged_once_a_verdict_is_written(db):
+    """The unjudged count is the cohort's own size, so status says how much judging is left."""
+    db.insert_jobs([job(), job(title="Other", job_url="https://x/2/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    assert db.totals()["unjudged"] == 2
+
+    db.import_verdicts({"https://x/1/": "d: not software development"})
+
+    assert db.totals()["unjudged"] == 1
 
 
 def test_relevant_among_counts_only_relevant_rows_within_the_given_urls(db):

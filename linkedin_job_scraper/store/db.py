@@ -122,18 +122,24 @@ class JobsDb:
         with self.engine.connect() as conn:
             return conn.execute(select(RunRow).order_by(RunRow.run_id.desc()).limit(1)).first()
 
+    @staticmethod
+    def _unjudged():
+        """Rows still awaiting a fit verdict: relevant, not confirmed-closed, and carrying none yet."""
+        return and_(JobRow.is_relevant.is_(True), JobRow.is_open.isnot(False), JobRow.fit_verdict.is_(None))
+
     def totals(self) -> dict[str, int]:
-        """Counts over jobs_raw: every stored row, the relevant ones, and relevant rows lacking a description."""
+        """Counts over jobs_raw: every stored row, the relevant ones, those lacking a description, the unjudged."""
         relevant = JobRow.is_relevant.is_(True)
         with self.engine.connect() as conn:
-            stored, kept, lacking = conn.execute(
+            stored, kept, lacking, unjudged = conn.execute(
                 select(
                     func.count(),
                     func.count().filter(relevant),
                     func.count().filter(relevant, JobRow.job_description.is_(None)),
+                    func.count().filter(self._unjudged()),
                 ).select_from(JobRow)
             ).one()
-        return {"stored": stored, "relevant": kept, "missing_descriptions": lacking}
+        return {"stored": stored, "relevant": kept, "missing_descriptions": lacking, "unjudged": unjudged}
 
     def relevant_among(self, job_urls: Collection[str]) -> int:
         """How many of the given URLs are currently marked relevant."""
@@ -199,6 +205,20 @@ class JobsDb:
                 )
             ).all()
         return [Job(**row._asdict()) for row in rows if row.job_url not in turned_down]
+
+    def fit_cohort(self, since: str | None = None) -> list[Row]:
+        """The rows awaiting a fit verdict, newest first — what a judging pass reads, in full.
+
+        Whole rows rather than Jobs: judging weighs the signals the scrape derived (``description_lang``,
+        ``stated_locations``, ``work_eligibility``, ``dup_count``) alongside the ad's own text. ``since``
+        drops rows first seen before it, so one night's arrivals can be judged on their own without
+        rebuilding the backlog sitting behind them.
+        """
+        stmt = select(JobRow).where(self._unjudged())
+        if since:
+            stmt = stmt.where(JobRow.first_seen >= since)
+        with self.engine.connect() as conn:
+            return conn.execute(stmt.order_by(JobRow.date.desc(), JobRow.company, JobRow.title)).all()
 
     # --- writes --------------------------------------------------------------
 

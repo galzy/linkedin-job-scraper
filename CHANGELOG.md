@@ -2,7 +2,7 @@
 
 Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @ `8929765` (2024-08-17), rewritten since.
 
-## [Unreleased]
+## [v0.6.0]
 
 ### Added
 - Keywords syntax validation. A malformed boolean expression (dangling operator, unbalanced or empty

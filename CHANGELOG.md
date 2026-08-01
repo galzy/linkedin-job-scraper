@@ -10,63 +10,40 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
 - `stated_locations` on `jobs_raw`: where the ad's own text says you must be, comma-separated and
   normalized to English, with `EU` standing in for a clause open to the whole region. Read from the
   description by the new `signals` module, so it can disagree with `country`, which comes from the
-  card — a listing tagged Italy whose body reads "fully remote role within the UK" now says so in a
-  column. Country names come from ISO 3166, which pycountry ships translated in 163 languages, so
-  the ad's own `description_lang` decides which names are looked for and a German ad naming
-  "Deutschland" reads the same as an English one naming "Germany". A clause naming only a city is
-  resolved through the country that city sits in, so "based in our London office" reads as the UK.
-  Matching is anchored on the phrases that put a place in location position ("based in", "living
-  in", "anywhere in", "right to work in", "innerhalb", "Arbeitserlaubnis für", "residente in",
-  "woonachtig in"), which is what keeps vocabularies that size from firing on ordinary prose.
-  Clauses about someone else are skipped: a pay band ("for roles based in X, the salary range is"),
-  a vendor's address, where your colleagues sit, and a firm's own seat ("we're based in Paris but
-  open to remote work"). (Added to the existing database by a one-off `ALTER TABLE` and backfilled
-  over its stored descriptions; new databases get it from the model.)
+  card. Matching is anchored on the phrases that put a place in location position, looked for in the
+  ad's own `description_lang`, and skips clauses about someone else — a pay band, a vendor's address,
+  the firm's own seat. (One-off `ALTER TABLE` and backfill; new databases get it from the model.)
 - `location_phrases.yaml`, holding the phrases each language puts a place after, so adding a language
-  is a data edit rather than a regex one. The file carries the phrases, the regions and the informal
-  country names; the guards that decide whether a clause is about *you* stay in code, since that
-  turns on the words around the phrase rather than the phrase. Every language it marks `covered` must
-  appear in `tests/test_signals.py`, which is enforced by a test: three Italian phrases had been
-  sitting in the code reading zero of 139 Italian ads, because nothing asserted they worked. Adding
-  the `Sede/Luogo di lavoro:` label that Italian ads actually use took Italian from 0% to 6% of its
-  rows. Finnish, French, Swedish and Czech are listed and marked uncovered rather than left unsaid.
+  is a data edit rather than a regex one. The guards that decide whether a clause is about *you* stay
+  in code. A test enforces that every language it marks `covered` appears in `tests/test_signals.py`.
 - `work_eligibility` on `jobs_raw`, the bars an ad sets on who may take it: a security clearance or a
   refusal to sponsor a visa, which scope a role to wherever it already sits without naming a country.
-  Read in English only, the language such boilerplate arrives in, and read off the description at
-  fetch time like the other signals.
+  Read in English only, off the description at fetch time like the other signals.
 - `fit_verdict` on `jobs_raw`, the judgment written by hand against the fit rubric — codes and their
-  reasons both, so the row carries why it was turned down and not merely that it was. Nothing in the
-  scraper derives it: a judgment from a person and a guess from a signal would be indistinguishable
-  once stored, and a later config edit would quietly invalidate the guesses. Language stays in
-  `is_relevant`, location stays a signal. `import_verdicts` writes it, carrying a stated code to the
-  rest of the posting's `dup_group` — LinkedIn mints a fresh URL per repost, and one ad currently
-  sits in the database as fifteen rows across seventeen days. A `?` stays on its own row, since it
-  reads that posting's wording; a repost only fills where nothing was written.
+  reasons both. Nothing in the scraper derives it: a judgment from a person and a guess from a signal
+  would be indistinguishable once stored. `import_verdicts` writes it, carrying a stated code to the
+  rest of the posting's `dup_group`, since LinkedIn mints a fresh URL per repost; a `?` stays on its
+  own row, and a repost only fills where nothing was written.
 
 ### Changed
-- The refresh phase skips a posting already turned down outright. The config still keeps it relevant,
-  but whether it is still open stopped mattering the moment it was judged, and re-confirming those
-  was half the work: of 2,198 relevant, not-closed rows, 1,011 carry a stated code. Rows carrying
-  nothing but `?` codes stay in the set — a suspicion means revisit, not rejected.
-- `is_english` is now `description_lang`, holding the ISO 639-1 code rather than a boolean. The
-  language a description is written in was always the underlying signal; a code keeps which one, so
-  an Italian ad and a German one are no longer both just "not English". (Replaced in the existing
-  database by a one-off `ALTER TABLE` and backfilled; new databases get it from the model.)
+- The refresh phase skips a posting already turned down outright — whether it is still open stopped
+  mattering the moment it was judged. Rows carrying nothing but `?` codes stay in the set, since a
+  suspicion means revisit, not rejected.
+- `is_english` is now `description_lang`, holding the ISO 639-1 code rather than a boolean, so an
+  Italian ad and a German one are no longer both just "not English". (One-off `ALTER TABLE` and
+  backfill; new databases get it from the model.)
 - The session probe logs its query and says why a draw was inconclusive (fetch failed, no results
   even unfiltered) instead of the catch-all "probe unanswerable".
 - A draw whose remote page is empty while the unfiltered one has cards now counts as the filtering
-  pipeline, where it used to be inconclusive and cost a redraw. Only a session applying `f_WT` can
-  serve nothing remote while the unfiltered page has cards — the non-filtering one serves both the
-  identical list — so the probe was redrawing past the sessions it was looking for, and an hour when
-  the probe query has no remote postings could exhaust all ten draws and abort the run with nothing
-  scraped (2026-07-22: twenty draws, nine of them empty-remote, two runs aborted). The empty page is
-  refetched once before it counts, since the endpoint serves flaky empties and a flaky one here would
-  otherwise keep a non-filtering session and label every job in the run from it. The unfiltered page
-  is fetched first and settles a dry query on its own, so a draw now costs one to three requests
-  rather than always two.
+  pipeline, where it used to be inconclusive and cost a redraw: only a session applying `f_WT` can
+  serve nothing remote while the unfiltered page has cards. The probe had been redrawing past the
+  sessions it was looking for, and an hour with no remote postings could exhaust all ten draws and
+  abort the run. The empty page is refetched once before it counts, since the endpoint serves flaky
+  empties. The unfiltered page is fetched first and settles a dry query on its own, so a draw costs
+  one to three requests rather than always two.
 - The `jobs_filtered` view orders rows newest-first, then by company and title.
 - The refresh due-check drops its posting-date condition and keys on `last_verified` alone.
-- Lowered default RECHECK_DAYS to 3
+- Lowered the default `RECHECK_DAYS` to 3.
 
 ## [v0.5.0]
 

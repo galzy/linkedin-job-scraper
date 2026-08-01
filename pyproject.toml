@@ -1,6 +1,6 @@
 [project]
 name = "linkedin_job_scraper"
-version = "0.5.0"
+version = "0.6.0"
 description = "Scrapes LinkedIn job listings, filters them by keywords and stores them in a DB."
 authors = [{ name = "Gal Ziv", email = "galzy@users.noreply.github.com" }]
 readme = "README.md"

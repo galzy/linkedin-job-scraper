@@ -2,6 +2,18 @@
 
 Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @ `8929765` (2024-08-17), rewritten since.
 
+## [Unreleased]
+
+### Added
+- A `fit` command: judges the last days' unjudged rows against `configs/fit-criteria.md` through
+  headless `claude -p` calls — a batch of 12 ads per call, each stored as it lands — then writes
+  each day's clean-or-`?` arrivals to `--dest` as `new-jobs-<date>.csv`. So `fit_verdict` is no
+  longer hand-only: the judge follows the same rubric, and `is_wellformed` (new in `verdicts`)
+  gates its output to the verdict grammar before anything is stored. A day's file is written once,
+  and only after every row of the day is judged; today's waits for `--export-today`, which the
+  nightly passes right after its scrape ends the day. An unreachable `--dest` (an unmounted drive)
+  warns and leaves the export to a later run, as does a day whose judging failed.
+
 ## [v0.6.0]
 
 ### Added

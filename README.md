@@ -95,6 +95,7 @@ uv run linkedin-job-scraper scrape configs/other.yaml --max-pages 2 # another co
 | `refresh [config] [--recheck-days N]` | Fetch missing data and re-check open-status for stored relevant jobs: anything still lacking a description or an open/closed verdict is fetched on sight; the rest are re-checked once older than N days (default 3) and not verified since. A posting turned down by a stated `fit_verdict` code is skipped. Uses the config's `http` settings only, not the queries. |
 | `status` | Print the last run — when, how it ended, its counts — and the stored-job totals. |
 | `export [path] [--all] [--no-descriptions]` | Write stored jobs from DB to a CSV — the kept (relevant, not closed) set by default, every stored row with `--all`. Reads only the database; overwrites `reports/jobs.csv` unless given a path. |
+| `fit [--dest DIR] [--days N] [--model M] [--claude PATH] [--export-today]` | Judge the last N days' unjudged jobs against `configs/fit-criteria.md` (your own rubric; not shipped) through headless `claude` calls, store the verdicts in `fit_verdict`, then write each fully-judged day's clean-or-`?` arrivals to `DIR/new-jobs-<date>.csv`, once per day. Today's file waits for `--export-today`, meant for a nightly whose scrape just ended the day. |
 | `prune <days>` | Permanently delete stored jobs that are irrelevant or closed and older than N days. Asks for confirmation twice; needs an interactive terminal. |
 
 `uv run python -m linkedin_job_scraper` runs the same thing if you'd rather not use the console script.

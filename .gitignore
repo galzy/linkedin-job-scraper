@@ -24,3 +24,5 @@ indeed.py
 *.idea/*
 *code-workspace
 .vscode/
+scripts/*
+!scripts/*.sample.ps1

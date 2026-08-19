@@ -4,19 +4,13 @@ from pathlib import Path
 
 from loguru import logger
 
-from linkedin_job_scraper.config import WorkplaceType, load_config
+from linkedin_job_scraper.config import load_config
 from linkedin_job_scraper.constants import CONFIG_PATH, DB_PATH, MAX_PAGES, RECHECK_DAYS
-from linkedin_job_scraper.filters import derive_workplace_types, relevance_predicate
+from linkedin_job_scraper.filters import relevance_predicate
 from linkedin_job_scraper.geo import searched_countries
 from linkedin_job_scraper.logger import init_logging
 from linkedin_job_scraper.net.http import HttpClient
-from linkedin_job_scraper.scrape.scraping import (
-    BlockedError,
-    NoFilteringSessionError,
-    acquire_filtering_session,
-    fetch_postings,
-    scrape_jobs,
-)
+from linkedin_job_scraper.scrape.scraping import BlockedError, fetch_postings, scrape_jobs
 from linkedin_job_scraper.store.db import JobsDb
 
 
@@ -44,12 +38,6 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
     db.create_schema()
     client = HttpClient.from_config(config.http)
 
-    # Ensure we have a filtering session before scraping, so we don't waste time on a run that will be ignored.
-    if not acquire_filtering_session(config, client):
-        client.close()
-        db.close()
-        raise NoFilteringSessionError("Every session draw ignored the workplace filter; nothing scraped")
-
     # Staging is the scrape's write-ahead log, cleared only once its rows reach jobs_raw. Leftover rows
     # mean a prior run crashed mid-promotion; fold them into this run rather than drop them.
     if orphaned := db.staged_count():
@@ -61,16 +49,10 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
         logger.error(f"Blocked by LinkedIn: {e}. Storing the jobs staged before the block")
         blocked = e
 
-    jobs_deduped, attribution, query_types = db.staged_scrape()
+    jobs_deduped, attribution = db.staged_scrape()
     scraped = sum(sum(counter.values()) for counter in attribution.values())
     logger.info(f"Total jobs scraped: {scraped:,}")
     logger.info(f"After removing duplicates: {len(jobs_deduped):,}")
-
-    # Label each job by the tagged query that found it, from the harvest type staged with its card.
-    types = derive_workplace_types(attribution, query_types)
-    jobs_deduped = [
-        job.with_workplace_type(types.get(job.job_url, WorkplaceType.UNTAGGED.value)) for job in jobs_deduped
-    ]
 
     # Every scraped job is stored, relevant or not, so irrelevant ones are not re-scraped next run.
     new_urls = db.insert_jobs(jobs=jobs_deduped, countries=countries)

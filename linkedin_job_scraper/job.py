@@ -24,7 +24,7 @@ class Job(BaseModel):
     location: str = ""
     job_description: str | None = None
     is_open: bool | None = None  # None until the posting page is fetched; False once it stops accepting applications
-    workplace_type: str = "untagged"  # on_site / remote / hybrid / untagged, inferred across queries
+    workplace_type: str = "untagged"  # on_site / remote / hybrid / untagged, read from the description
 
     @property
     def key(self) -> str:
@@ -39,6 +39,3 @@ class Job(BaseModel):
     def with_posting(self, description: str | None, is_open: bool | None) -> Self:
         """A copy carrying what one fetch of the posting page yielded: its description and open-status."""
         return self.model_copy(update={"job_description": description, "is_open": is_open})
-
-    def with_workplace_type(self, workplace_type: str) -> Self:
-        return self.model_copy(update={"workplace_type": workplace_type})

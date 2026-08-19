@@ -130,21 +130,6 @@ def test_a_blocked_run_exits_3_so_cron_can_tell_it_from_a_real_failure(monkeypat
     assert excinfo.value.code == 3
 
 
-def test_a_run_without_a_filtering_session_exits_4(monkeypatch):
-    from linkedin_job_scraper import cli
-
-    def no_session(config, max_pages):
-        raise cli.NoFilteringSessionError("no filtering session")
-
-    monkeypatch.setattr(cli, "run_scrape", no_session)
-    monkeypatch.setattr(sys, "argv", ["linkedin_job_scraper", "scrape", str(SAMPLE)])
-
-    with pytest.raises(SystemExit) as excinfo:
-        cli.main()
-
-    assert excinfo.value.code == 4
-
-
 def test_an_unexpected_error_exits_5_rather_than_dumping_a_traceback(monkeypatch):
     from linkedin_job_scraper import cli
 

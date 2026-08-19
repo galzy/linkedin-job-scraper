@@ -7,8 +7,8 @@ from typing import NamedTuple
 
 from loguru import logger
 
-from linkedin_job_scraper.config import Config, SearchQuery, WorkplaceType
-from linkedin_job_scraper.constants import MAX_PAGES, SESSION_DRAWS
+from linkedin_job_scraper.config import Config, SearchQuery
+from linkedin_job_scraper.constants import MAX_PAGES
 from linkedin_job_scraper.job import Job
 from linkedin_job_scraper.net.http import HttpClient
 from linkedin_job_scraper.scrape.parsing import (
@@ -24,10 +24,6 @@ class BlockedError(RuntimeError):
     """LinkedIn stopped serving results mid-run; the jobs gathered before it are already staged."""
 
 
-class NoFilteringSessionError(RuntimeError):
-    """Every session draw landed the non-filtering pipeline; scraping would fake every workplace label."""
-
-
 class QueryOutcome(StrEnum):
     """Why a query stopped paging."""
 
@@ -39,20 +35,6 @@ class QueryOutcome(StrEnum):
 class QueryResult(NamedTuple):
     jobs: list[Job]
     outcome: QueryOutcome
-
-
-class _Probe(StrEnum):
-    """One session draw's verdict, worded for the log."""
-
-    FILTERING = "filtering pipeline, keeping it"
-    DRY_REMOTE = "filtering pipeline with nothing remote, keeping it"
-    NON_FILTERING = "non-filtering pipeline"
-    FETCH_FAILED = "a probe page failed to fetch"
-    NO_RESULTS = "no results even unfiltered; dry query or a flaky page"
-
-
-#: The verdicts that settle on a filtering session; every other one costs a draw.
-_KEEPS = frozenset({_Probe.FILTERING, _Probe.DRY_REMOTE})
 
 
 def scrape_query(query: SearchQuery, client: HttpClient, tag: str, max_pages: int = MAX_PAGES) -> QueryResult:
@@ -78,7 +60,7 @@ def scrape_query(query: SearchQuery, client: HttpClient, tag: str, max_pages: in
         logger.debug(f"[{tag}] scraped page {page + 1}: parsed {len(page_jobs)} of {count_cards(soup)} cards")
         jobs.extend(page_jobs)
 
-    logger.info(f"[{tag}] hit the {max_pages}-page ceiling with {len(jobs):,} jobs")
+    logger.warning(f"[{tag}] hit the {max_pages}-page ceiling with {len(jobs):,} jobs; the rest is cut")
     return QueryResult(jobs, QueryOutcome.CEILING)
 
 
@@ -129,57 +111,6 @@ def _log_roster(tags: list[str], queries: list[SearchQuery]) -> None:
     """Log the roster, one line per query."""
     for tag, query in zip(tags, queries, strict=True):
         logger.info(f"[{tag}] {query.label}")
-
-
-def acquire_filtering_session(config: Config, client: HttpClient, max_draws: int = SESSION_DRAWS) -> bool:
-    """Renew the client's session until LinkedIn deals one that honors the workplace filter.
-
-    Each guest session is dealt one of two pipelines for its whole life: one applies f_WT,
-    the other ignores it and serves every variant the identical unfiltered list. One to three
-    requests per draw. False means no draw landed the filtering pipeline; the caller should
-    abort the run, since workplace labels from a non-filtering session would be fiction.
-    """
-    probe = config.search_queries[0]
-    logger.info(f"Probing sessions with [{probe.label}]")
-    for draw in range(1, max_draws + 1):
-        if draw > 1:
-            client.renew_session()
-        verdict = _probe_session(probe, client)
-        logger.info(f"Session draw {draw}/{max_draws}: {verdict}")
-        if verdict in _KEEPS:
-            return True
-    return False
-
-
-def _probe_session(query: SearchQuery, client: HttpClient) -> _Probe:
-    """Judge this session's pipeline by ``query``'s first page, remote variant vs unfiltered.
-
-    The non-filtering pipeline serves both the identical page; the filtering one gives them
-    nearly disjoint pages — nothing in between has been observed. Remote is the probe because
-    its honest first page least resembles the unfiltered one. An empty remote page under a
-    populated unfiltered one says the same thing at its limit — the filter ran and matched
-    nothing — but only once a refetch confirms it, since the endpoint serves flaky empties.
-    A failed page, or one empty even unfiltered, settles nothing.
-    """
-    remote_url, untagged_url = (
-        query.model_copy(update={"harvest_type": t.value}).page_url(0)
-        for t in (WorkplaceType.REMOTE, WorkplaceType.UNTAGGED)
-    )
-    untagged = client.fetch(untagged_url).soup
-    if untagged is None:
-        return _Probe.FETCH_FAILED
-    if not has_job_cards(untagged):
-        return _Probe.NO_RESULTS
-    for _ in range(2):
-        remote = client.fetch(remote_url).soup
-        if remote is None:
-            return _Probe.FETCH_FAILED
-        if has_job_cards(remote):
-            break
-    else:
-        return _Probe.DRY_REMOTE
-    remote_ids, untagged_ids = ([job.job_url for job in parse_page_jobs(page)] for page in (remote, untagged))
-    return _Probe.FILTERING if remote_ids != untagged_ids else _Probe.NON_FILTERING
 
 
 def _channel_open(config: Config, client: HttpClient) -> bool:

@@ -27,10 +27,10 @@ class WorkplaceType(StrEnum):
     ON_SITE = "on_site"
     REMOTE = "remote"
     HYBRID = "hybrid"
-    UNTAGGED = "untagged"  # never harvested; kept for the session probe and the canary
+    UNTAGGED = "untagged"  # what a search harvests, and what an ad stating nothing keeps
 
 
-# LinkedIn's f_WT search code per type. UNTAGGED has none — its variant is the unfiltered search.
+# LinkedIn's f_WT search code per type. UNTAGGED has none.
 _F_WT = {WorkplaceType.ON_SITE: "1", WorkplaceType.REMOTE: "2", WorkplaceType.HYBRID: "3"}
 
 
@@ -106,8 +106,8 @@ class SearchQuery(BaseModel):
     location: str
     distance: str = ""
     timespan: str = ""
-    workplace_type: list[str] = []  # keep-list: the variants harvested and the types kept; empty means all three
-    harvest_type: str = WorkplaceType.UNTAGGED.value  # the type this variant searches; set by harvest_variants
+    workplace_type: list[str] = []  # keep-list: the types kept once an ad states one; empty keeps every type
+    harvest_type: str = WorkplaceType.UNTAGGED.value  # what the search targets; untagged searches unfiltered
 
     @field_validator("keywords")
     @classmethod
@@ -177,11 +177,6 @@ class SearchQuery(BaseModel):
         """
         return self.model_copy(update={"distance": "", "harvest_type": WorkplaceType.UNTAGGED.value, "timespan": ""})
 
-    def harvest_variants(self) -> list[Self]:
-        """One copy of this query per keep-list workplace type; an empty keep-list means all three."""
-        types = self.workplace_type or [t.value for t in _F_WT]
-        return [self.model_copy(update={"harvest_type": t}) for t in types]
-
 
 class HttpConfig(BaseModel):
     """Request-layer tuning, overridable from config.yaml's "http" block.
@@ -237,8 +232,8 @@ class Config(BaseModel):
 
     @property
     def scrape_queries(self) -> list[SearchQuery]:
-        """The queries actually fetched: each search fanned out into one variant per keep-list type."""
-        return [variant for query in self.search_queries for variant in query.harvest_variants()]
+        """The queries actually fetched: one unfiltered search per configured query."""
+        return self.search_queries
 
     @field_validator("search_queries", mode="before")
     @classmethod

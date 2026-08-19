@@ -171,15 +171,13 @@ class JobsDb:
         with self.engine.connect() as conn:
             return conn.scalar(select(func.count()).select_from(StagingRow))
 
-    def staged_scrape(self) -> tuple[list[Job], dict[str, Counter[str]], dict[str, str]]:
-        """The staged cards as (postings deduped by url, per-query attribution, per-query harvest type)."""
+    def staged_scrape(self) -> tuple[list[Job], dict[str, Counter[str]]]:
+        """The staged cards as (postings deduped by url, per-query attribution)."""
         attribution: dict[str, Counter[str]] = defaultdict(Counter)
-        query_types: dict[str, str] = {}
         jobs: dict[str, Job] = {}
         with self.engine.connect() as conn:
             for row in conn.execute(select(StagingRow)):
                 attribution[row.query_id][row.job_url] = row.times_seen
-                query_types[row.query_id] = row.harvest_type
                 if row.job_url not in jobs:
                     jobs[row.job_url] = Job(
                         title=row.title,
@@ -188,7 +186,7 @@ class JobsDb:
                         job_url=row.job_url,
                         location=row.location,
                     )
-        return list(jobs.values()), attribution, query_types
+        return list(jobs.values()), attribution
 
     def export_rows(self, all_rows: bool = False, descriptions: bool = True) -> tuple[list[str], list[Row]]:
         """The jobs_raw columns and rows to export: the kept set by default, every row with ``all_rows``."""

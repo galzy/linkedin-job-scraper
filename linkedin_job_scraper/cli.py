@@ -29,7 +29,7 @@ from linkedin_job_scraper.fit import DEFAULT_JUDGE_MODEL, FitJudgeError, judge_b
 from linkedin_job_scraper.logger import init_logging
 from linkedin_job_scraper.main import main as run_scrape
 from linkedin_job_scraper.net.http import HttpClient
-from linkedin_job_scraper.scrape.scraping import BlockedError, NoFilteringSessionError, fetch_postings
+from linkedin_job_scraper.scrape.scraping import BlockedError, fetch_postings
 from linkedin_job_scraper.store.db import FIT_EXPORT_COLUMNS, JobsDb
 from linkedin_job_scraper.verdicts import is_firm
 
@@ -396,15 +396,12 @@ def _prune(
 def main() -> None:
     """Run the Typer app, mapping run-time failures to exit codes a cron job can read."""
     # A cron job has nothing but the exit status to go on: 1 config/DB error, 2 usage, 3 blocked,
-    # 4 no filtering session, 5 anything unforeseen.
+    # 5 anything unforeseen.
     try:
         app()
     except BlockedError as e:
         logger.error(e)
         sys.exit(3)
-    except NoFilteringSessionError as e:
-        logger.error(e)
-        sys.exit(4)
     except (ConfigurationError, SQLAlchemyError) as e:
         logger.error(e)
         sys.exit(1)

@@ -16,7 +16,7 @@ if ($status -eq 3) {
     exit $status
 }
 
-& $py -m linkedin_job_scraper refresh  # draws no search session, so it still runs after a failed probe (exit 4)
+& $py -m linkedin_job_scraper refresh
 if ($status -eq 0) { $status = $LASTEXITCODE }
 
 & $py -m linkedin_job_scraper fit --dest $reports --claude $claude --export-today

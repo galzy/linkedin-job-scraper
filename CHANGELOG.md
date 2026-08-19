@@ -4,7 +4,26 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
 
 ## [Unreleased]
 
+### Changed
+- LinkedIn stopped honouring the `f_WT` workplace filter on its guest search: every value now
+  returns the same unfiltered list, on the API and on the plain search page alike, for every
+  session. Verified 2026-08-19, after 13 nights in which every run aborted rather than label a job
+  from a filter that was being ignored. So a search no longer fans out into one variant per
+  workplace type — it runs once, unfiltered — and the session probe that looked for a filtering
+  session is gone, along with exit code 4.
+- A job's workplace type is now read from what its description states outright, in `workplace.py`.
+  Only wording that settles the question counts; anything weaker leaves the type `untagged`, and an
+  `untagged` job is never judged against a keep-list. Against the 2,338 ads LinkedIn had already
+  labelled, that finds 32% of the known-remote ones and calls none of them on-site. A row that
+  already carries LinkedIn's own label keeps it.
+- Relevance is judged a second time once descriptions land, since that is where a type can appear.
+- A query that hits the page ceiling now logs a warning rather than a note: unfiltered searches
+  return more, so being cut short at 1000 results went from a curiosity to something to act on.
+
 ### Added
+- A `HALF_DAY` `timespan`. The endpoint turned out to honour any `f_TPR=r<seconds>`, not only the
+  windows LinkedIn's own UI offers, so a scrape run twice a day can halve what each query returns
+  and stay clear of the 1000-result cap.
 - A `fit` command: judges the last days' unjudged rows against `configs/fit-criteria.md` through
   headless `claude -p` calls — a batch of 12 ads per call, each stored as it lands — then writes
   each day's clean-or-`?` arrivals to `--dest` as `new-jobs-<date>.csv`. So `fit_verdict` is no

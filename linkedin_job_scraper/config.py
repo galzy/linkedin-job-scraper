@@ -18,6 +18,7 @@ class ConfigurationError(Exception):
 
 class TimeFilterType(StrEnum):
     ANY = ""
+    HALF_DAY = "r43200"
     DAY = "r86400"
     WEEK = "r604800"
     MONTH = "r2592000"

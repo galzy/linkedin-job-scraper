@@ -1,6 +1,6 @@
 import pytest
 
-from linkedin_job_scraper.verdicts import is_firm
+from linkedin_job_scraper.verdicts import is_firm, is_wellformed
 
 
 @pytest.mark.parametrize("verdict", [None, "", "   "])
@@ -28,3 +28,18 @@ def test_a_reason_naming_a_letter_and_colon_is_not_read_as_a_code():
 
 def test_free_text_carrying_no_code_is_not_a_rejection():
     assert not is_firm("looks interesting, ask about the salary")
+
+
+@pytest.mark.parametrize(
+    "verdict", ["", "a: below the floor", "b?: german-language ad; g: java backend", "c?: UK-anchored, GBP band"]
+)
+def test_a_verdict_the_grammar_allows_is_wellformed(verdict):
+    assert is_wellformed(verdict)
+
+
+@pytest.mark.parametrize(
+    "verdict", ["z: unknown code", "b", "b:", "b: x;", "  ", "looks interesting, ask about salary"]
+)
+def test_text_outside_the_grammar_is_not_wellformed(verdict):
+    """Free text is fine from a person's hand but not from the judge, whose output this gates."""
+    assert not is_wellformed(verdict)

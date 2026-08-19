@@ -11,7 +11,7 @@ from linkedin_job_scraper.config import SearchQuery, load_and_validate_config
 from linkedin_job_scraper.constants import NO_DESCRIPTION
 from linkedin_job_scraper.geo import searched_countries
 from linkedin_job_scraper.job import Job
-from linkedin_job_scraper.store.db import JobsDb
+from linkedin_job_scraper.store.db import FIT_EXPORT_COLUMNS, JobsDb
 
 
 @pytest.fixture
@@ -526,6 +526,32 @@ def test_fit_cohort_reads_newest_first_and_can_start_at_a_date(db):
     assert [row.job_url for row in db.fit_cohort()] == ["https://x/2/", "https://x/1/"]
     # since reads first_seen, not the posting date: it scopes a pass to what one run brought in
     assert [row.job_url for row in db.fit_cohort(since="2024-01-15")] == ["https://x/2/"]
+
+
+def test_unjudged_on_counts_one_days_kept_rows_awaiting_a_verdict(db):
+    with clock("2024-01-01 09:00:00"):
+        db.insert_jobs([job(), job(title="Other", job_url="https://x/2/")])
+    with clock("2024-01-02 09:00:00"):
+        db.insert_jobs([job(title="Third", job_url="https://x/3/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.import_verdicts({"https://x/1/": "d: not software development"})
+
+    assert db.unjudged_on("2024-01-01") == 1
+    assert db.unjudged_on("2024-01-02") == 1
+    assert db.unjudged_on("2024-01-03") == 0
+
+
+def test_fit_export_rows_are_one_days_kept_judged_rows(db):
+    with clock("2024-01-01 09:00:00"):
+        db.insert_jobs([job(), job(title="Other", job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
+    with clock("2024-01-02 09:00:00"):
+        db.insert_jobs([job(title="Fourth", job_url="https://x/4/")])
+    db.refresh_relevance(lambda title, company, workplace, qids: title != "Chef")
+    db.import_verdicts({"https://x/1/": "", "https://x/2/": "c?: UK listing", "https://x/3/": "", "https://x/4/": ""})
+
+    exported = db.fit_export_rows("2024-01-01")
+    assert [row.job_url for row in exported] == ["https://x/1/", "https://x/2/"]  # judged and kept; Chef is filtered
+    assert exported[0]._fields == FIT_EXPORT_COLUMNS
 
 
 def test_fit_cohort_carries_the_signals_judging_reads_beside_the_description(db):

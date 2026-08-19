@@ -40,6 +40,23 @@ from linkedin_job_scraper.store.statements import (
 )
 from linkedin_job_scraper.verdicts import is_firm
 
+# What the per-day fit export carries, in its column order.
+FIT_EXPORT_COLUMNS = (
+    "job_url",
+    "title",
+    "company",
+    "location",
+    "country",
+    "job_description",
+    "description_lang",
+    "stated_locations",
+    "work_eligibility",
+    "workplace_type",
+    "fit_verdict",
+    "dup_group",
+    "dup_count",
+)
+
 
 def _apply_pragmas(dbapi_connection: sqlite3.Connection, _record) -> None:
     """WAL plus a busy timeout so a read command and a live scrape's writes wait each other out."""
@@ -219,6 +236,28 @@ class JobsDb:
             stmt = stmt.where(JobRow.first_seen >= since)
         with self.engine.connect() as conn:
             return conn.execute(stmt.order_by(JobRow.date.desc(), JobRow.company, JobRow.title)).all()
+
+    def unjudged_on(self, day: str) -> int:
+        """How many rows first seen on ``day`` (YYYY-MM-DD) still await a fit verdict."""
+        with self.engine.connect() as conn:
+            return conn.scalar(
+                select(func.count()).select_from(JobRow).where(self._unjudged(), JobRow.first_seen.like(f"{day}%"))
+            )
+
+    def fit_export_rows(self, day: str) -> list[Row]:
+        """The kept, judged rows first seen on ``day``, carrying ``FIT_EXPORT_COLUMNS``, newest first."""
+        cols = [JobRow.__table__.c[name] for name in FIT_EXPORT_COLUMNS]
+        with self.engine.connect() as conn:
+            return conn.execute(
+                select(*cols)
+                .where(
+                    JobRow.is_relevant.is_(True),
+                    JobRow.is_open.isnot(False),
+                    JobRow.fit_verdict.isnot(None),
+                    JobRow.first_seen.like(f"{day}%"),
+                )
+                .order_by(JobRow.date.desc(), JobRow.company, JobRow.title)
+            ).all()
 
     # --- writes --------------------------------------------------------------
 

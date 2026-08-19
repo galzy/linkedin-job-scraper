@@ -72,12 +72,10 @@ def test_query_id_changes_when_any_search_field_changes(overrides):
     assert SearchQuery(**(base_fields | overrides)).query_id != base.query_id
 
 
-def test_page_url_carries_the_variants_f_wt_code_and_leaves_a_keyword_slash_unescaped():
-    variants = load_and_validate_config(raw(keywords="a/b")).search_queries[0].harvest_variants()
-    remote = next(v for v in variants if v.harvest_type == "remote")
+def test_page_url_searches_unfiltered_and_leaves_a_keyword_slash_unescaped():
+    url = load_and_validate_config(raw(keywords="a/b")).scrape_queries[0].page_url(0)
 
-    url = remote.page_url(0)
-    assert "f_WT=2" in url
+    assert "f_WT=&" in url  # no workplace code: LinkedIn ignores one
     assert "keywords=a/b" in url
 
 
@@ -229,9 +227,9 @@ def test_a_string_location_still_yields_a_single_query():
     assert [q.location for q in config.search_queries] == ["Bologna"]
 
 
-def test_a_location_list_fans_out_across_the_workplace_variants():
-    config = load_and_validate_config(raw(location=["Milan", "Italy"]))  # 2 locations x 3 default types
-    assert len(config.scrape_queries) == 6
+def test_a_location_list_fans_out_into_one_query_each():
+    config = load_and_validate_config(raw(location=["Milan", "Italy"]))
+    assert len(config.scrape_queries) == 2
 
 
 def test_only_empty_location_lists_leave_nothing_to_search():
@@ -239,16 +237,13 @@ def test_only_empty_location_lists_leave_nothing_to_search():
         load_and_validate_config(raw(location=[]))
 
 
-def test_harvest_variants_default_to_the_three_tagged_types_with_distinct_ids():
-    q = load_and_validate_config(raw()).search_queries[0]
-    variants = q.harvest_variants()
-    assert [v.harvest_type for v in variants] == ["on_site", "remote", "hybrid"]
-    assert len({v.query_id for v in variants}) == 3
-
-
-def test_a_keep_list_narrows_the_harvest_variants():
-    q = load_and_validate_config(raw(workplace_type=["remote"])).search_queries[0]
-    assert [v.harvest_type for v in q.harvest_variants()] == ["remote"]
+def test_a_search_is_fetched_once_unfiltered_whatever_its_keep_list():
+    """LinkedIn stopped honouring f_WT, so a keep-list narrows what is kept, not what is fetched."""
+    config = load_and_validate_config(
+        {"search_queries": [{"keywords": "k", "location": "l", "workplace_type": ["remote"]}]}
+    )
+    assert [q.harvest_type for q in config.scrape_queries] == ["untagged"]
+    assert config.scrape_queries == config.search_queries
 
 
 def test_untagged_is_rejected_as_a_keep_list_value():

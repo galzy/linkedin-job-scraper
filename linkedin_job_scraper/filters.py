@@ -1,31 +1,8 @@
-"""Job transforms: derive workplace types and the config's relevance predicate."""
+"""The config's relevance predicate."""
 
-from collections import Counter, defaultdict
 from collections.abc import Callable
 
-from loguru import logger
-
 from linkedin_job_scraper.config import Config, WorkplaceType
-
-_TAGGED = {WorkplaceType.ON_SITE.value, WorkplaceType.REMOTE.value, WorkplaceType.HYBRID.value}
-
-
-def derive_workplace_types(attribution: dict[str, Counter[str]], query_types: dict[str, str]) -> dict[str, str]:
-    """Each job's workplace type: the tagged search that surfaced it most, by sighting count.
-
-    ``query_types`` maps a query id to the ``harvest_type`` its search targeted. Every scraped query
-    is tagged, so a non-tagged one is an anomaly — warned about and skipped, leaving its jobs for the
-    caller to default to untagged.
-    """
-    tagged: dict[str, Counter[str]] = defaultdict(Counter)
-    for query_id, counter in attribution.items():
-        workplace = query_types.get(query_id)
-        if workplace not in _TAGGED:
-            logger.warning(f"Attribution query {query_id} is {workplace!r}, not a tagged workplace search; skipping")
-            continue
-        for job_url, count in counter.items():
-            tagged[job_url][workplace] += count
-    return {job_url: max(hits, key=hits.get) for job_url, hits in tagged.items()}
 
 
 def relevance_predicate(config: Config) -> Callable[[str, str, str, set[str]], bool]:
@@ -50,6 +27,9 @@ def relevance_predicate(config: Config) -> Callable[[str, str, str, set[str]], b
             return False
         if company in company_exclude:
             return False
+        # A type the ad never stated is not judged against a keep-list.
+        if workplace_type == WorkplaceType.UNTAGGED.value:
+            return True
         # An empty keep-list keeps every type; a job no current query surfaced isn't judged on type.
         surfaced = [keep_lists[q] for q in query_ids if q in keep_lists]
         return any(not wanted or workplace_type in wanted for wanted in surfaced) if surfaced else True

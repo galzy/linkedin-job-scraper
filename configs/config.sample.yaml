@@ -21,9 +21,9 @@ search_queries:
     location: Bologna
     distance: KM_40
     timespan: WEEK
-    # LinkedIn never returns the type, so a search runs once per type listed here, and each job's
-    # type is read from which variant surfaced it. [] or omit harvests and keeps all three.
-    # Values: on_site, remote, hybrid.
+    # Every search runs unfiltered — LinkedIn ignores its own workplace filter — so this keeps
+    # jobs rather than choosing what to fetch, and only once an ad states its type outright.
+    # [] or omit keeps every type. Values: on_site, remote, hybrid.
     workplace_type: [remote, hybrid]
   # A list location fans this entry into one query per location, sharing everything else.
   - keywords: *narrow

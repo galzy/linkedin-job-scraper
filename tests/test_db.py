@@ -30,11 +30,13 @@ def job(
     job_description=None,
     location="Bologna",
     is_open=None,
+    workplace_type="untagged",
 ):
     return Job(
         title=title,
         company=company,
         location=location,
+        workplace_type=workplace_type,
         date=date,
         job_url=job_url,
         job_description=job_description,
@@ -835,21 +837,21 @@ def test_relevant_among_counts_only_relevant_rows_within_the_given_urls(db):
 
 
 def test_refresh_relevance_judges_on_the_stored_workplace_type(db):
-    db.insert_jobs([job().with_workplace_type("remote"), job(job_url="https://x/2/").with_workplace_type("on_site")])
+    db.insert_jobs([job(workplace_type="remote"), job(job_url="https://x/2/", workplace_type="on_site")])
 
     db.refresh_relevance(lambda title, company, workplace, qids: workplace != "on_site")
     assert dict(rows(db, "workplace_type", "is_relevant")) == {"remote": 1, "on_site": 0}
 
 
 def test_a_rescrape_does_not_downgrade_a_known_type_to_untagged(db):
-    db.insert_jobs([job().with_workplace_type("remote")])
-    db.insert_jobs([job().with_workplace_type("untagged")])  # a later run that only caught it via none
+    db.insert_jobs([job(workplace_type="remote")])
+    db.insert_jobs([job(workplace_type="untagged")])  # a later run that read no type from the ad
     assert rows(db, "workplace_type") == [("remote",)]
 
 
 def test_a_rescrape_upgrades_untagged_to_a_known_type(db):
-    db.insert_jobs([job().with_workplace_type("untagged")])
-    db.insert_jobs([job().with_workplace_type("remote")])
+    db.insert_jobs([job(workplace_type="untagged")])
+    db.insert_jobs([job(workplace_type="remote")])
     assert rows(db, "workplace_type") == [("remote",)]
 
 
@@ -859,7 +861,7 @@ def test_staged_scrape_dedupes_by_url_and_attributes_per_query(db):
     )
     db.stage_jobs([job(job_url="https://x/1/")], "qB", "hybrid")
 
-    jobs, attribution, _ = db.staged_scrape()
+    jobs, attribution = db.staged_scrape()
 
     assert sorted(j.job_url for j in jobs) == ["https://x/1/", "https://x/2/"]  # one row per posting
     assert attribution["qA"] == Counter({"https://x/1/": 2, "https://x/2/": 1})  # per-page cards counted
@@ -867,21 +869,11 @@ def test_staged_scrape_dedupes_by_url_and_attributes_per_query(db):
     assert sum(sum(c.values()) for c in attribution.values()) == 4  # the pre-dedup scraped total
 
 
-def test_staged_scrape_returns_each_querys_harvest_type(db):
-    """The harvest type staged with a card lets a run label a job whose query its config has dropped."""
-    db.stage_jobs([job(job_url="https://x/1/")], "qA", "remote")
-    db.stage_jobs([job(job_url="https://x/2/")], "qB", "hybrid")
-
-    _, _, query_types = db.staged_scrape()
-
-    assert query_types == {"qA": "remote", "qB": "hybrid"}
-
-
 def test_staged_scrape_keeps_one_row_when_a_postings_title_drifts(db):
     """LinkedIn serves one posting under drifting title text; the url is its identity, so it stays one row."""
     db.stage_jobs([job(title="Engineer"), job(title="Engineer (Remote)")], "qA", "remote")  # same url
 
-    jobs, _, _ = db.staged_scrape()
+    jobs, _ = db.staged_scrape()
 
     assert [j.title for j in jobs] == ["Engineer"]  # first card wins
 
@@ -890,7 +882,7 @@ def test_reset_staging_empties_the_table(db):
     db.stage_jobs([job()], "qA", "remote")
     db.reset_staging()
 
-    jobs, attribution, _ = db.staged_scrape()
+    jobs, attribution = db.staged_scrape()
 
     assert jobs == []
     assert not attribution
@@ -908,7 +900,7 @@ def test_leftover_staging_is_promoted_before_it_is_cleared(db):
     """A prior run's staged rows reach jobs_raw, and staging is cleared only after — the WAL discipline."""
     db.stage_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/")], "qA", "remote")
 
-    promoted, _, _ = db.staged_scrape()  # what main() reads back before promoting
+    promoted, _ = db.staged_scrape()  # what main() reads back before promoting
     db.insert_jobs(promoted)
     db.reset_staging()  # only after the durable insert
 

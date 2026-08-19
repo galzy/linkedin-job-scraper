@@ -13,7 +13,6 @@ from linkedin_job_scraper.scrape.parsing import parse_page_jobs
 from linkedin_job_scraper.scrape.scraping import (
     BlockedError,
     QueryOutcome,
-    acquire_filtering_session,
     fetch_posting,
     scrape_jobs,
     scrape_query,
@@ -183,9 +182,7 @@ def config(queries: list[SearchQuery], search_workers: int = 3) -> Config:
     return Config(search_queries=queries, http={"search_workers": search_workers})
 
 
-# Each user query fans out into one variant per keep-list type — all three when unset — and a "yes"
-# keyword surfaces the one job under every variant, so a single "yes" query yields VARIANTS jobs.
-VARIANTS = len(query().harvest_variants())
+# One search is fetched once, unfiltered, so a "yes" query surfaces its one job once.
 
 
 class StagingSink:
@@ -213,10 +210,11 @@ def test_an_empty_run_is_a_block_not_a_finish():
 
 def test_a_block_mid_run_keeps_the_jobs_staged_before_it():
     client = WallClient(good=1)  # one page of cards, then the wall goes up
+    queries = [query(), SearchQuery(keywords="second", location="l")]
     sink = StagingSink()
 
     with pytest.raises(BlockedError):
-        scrape_jobs(config([query()]), client, sink)
+        scrape_jobs(config(queries, search_workers=1), client, sink)  # in order, so the first gets the page
 
     assert len(sink.jobs) == 1
 
@@ -228,7 +226,7 @@ def test_one_barren_query_does_not_read_as_a_block():
 
     scrape_jobs(config(queries), ByKeywordClient(), sink)
 
-    assert len(sink.jobs) == VARIANTS  # "yes" surfaces its job under each of its variants
+    assert len(sink.jobs) == 1  # "yes" surfaces its one job
 
 
 def test_one_query_giving_up_ends_the_run_even_though_the_run_has_jobs():
@@ -240,7 +238,7 @@ def test_one_query_giving_up_ends_the_run_even_though_the_run_has_jobs():
     with pytest.raises(BlockedError, match="gave up mid-query"):
         scrape_jobs(config(queries), ByKeywordClient(walled="walled"), sink)
 
-    assert len(sink.jobs) == VARIANTS  # the run still staged what "yes" found before it ended
+    assert len(sink.jobs) == 1  # the run still staged what "yes" found before it ended
 
 
 def test_a_mid_run_block_is_caught_even_though_the_run_has_jobs():
@@ -260,11 +258,8 @@ def test_scrape_jobs_attributes_each_job_to_the_query_that_found_it():
 
     scrape_jobs(config([q]), ByKeywordClient(), sink)
 
-    # The search fans out, so the job is attributed to each variant that surfaced it, once apiece.
-    assert set(sink.attribution) == {v.query_id for v in q.harvest_variants()}
+    assert set(sink.attribution) == {q.query_id}
     assert all(sum(counter.values()) == 1 for counter in sink.attribution.values())
-    # Each variant stages the workplace type it searched, so recovery can label its jobs.
-    assert sink.query_types == {v.query_id: v.harvest_type for v in q.harvest_variants()}
 
 
 def test_a_block_stages_the_attribution_gathered_before_it():
@@ -274,117 +269,7 @@ def test_a_block_stages_the_attribution_gathered_before_it():
     with pytest.raises(BlockedError):
         scrape_jobs(config(queries), ByKeywordClient(walled="walled"), sink)
 
-    variant_ids = {v.query_id for v in queries[0].harvest_variants()}
-    assert all(sum(sink.attribution[qid].values()) == 1 for qid in variant_ids)
-
-
-# --- acquire_filtering_session ------------------------------------------------
-
-# A second, distinct card, so a filtering session's remote and catch-all pages differ.
-OTHER_CARD_PAGE = """
-<li>
-<div data-entity-urn="urn:li:jobPosting:9999">
-  <div class="base-search-card__info">
-    <h3>Data Engineer</h3>
-    <a class="hidden-nested-link">Initech</a>
-  </div>
-</div>
-</li>
-"""
-
-
-class SessionClient:
-    """One scripted pipeline state per session; renew_session moves to the next.
-
-    "A" serves every variant the identical page, "B" gives remote its own, "empty" and
-    "fail" stand for a probe page without cards and a fetch that gave up, "dry-remote"
-    for an empty remote page alongside a populated unfiltered one.
-    """
-
-    def __init__(self, states: list[str]):
-        self._states = states
-        self._current = 0
-        self.renewals = 0
-
-    def renew_session(self) -> None:
-        self.renewals += 1
-        self._current = min(self._current + 1, len(self._states) - 1)
-
-    def fetch(self, url: str) -> Fetch:
-        state = self._states[self._current]
-        if state == "fail":
-            return Fetch(None)
-        if state == "empty":
-            return Fetch(BeautifulSoup(EMPTY_PAGE, "html.parser"))
-        if state == "dry-remote" and "f_WT=2" in url:
-            return Fetch(BeautifulSoup(EMPTY_PAGE, "html.parser"))
-        page = OTHER_CARD_PAGE if state == "B" and "f_WT=2" in url else CARD_PAGE
-        return Fetch(BeautifulSoup(page, "html.parser"))
-
-
-class FlakyRemoteClient:
-    """A filtering session whose remote page comes back empty once, then serves its cards."""
-
-    def __init__(self):
-        self.remote_fetches = 0
-        self.renewals = 0
-
-    def renew_session(self) -> None:
-        self.renewals += 1
-
-    def fetch(self, url: str) -> Fetch:
-        if "f_WT=2" not in url:
-            return Fetch(BeautifulSoup(CARD_PAGE, "html.parser"))
-        self.remote_fetches += 1
-        page = EMPTY_PAGE if self.remote_fetches == 1 else OTHER_CARD_PAGE
-        return Fetch(BeautifulSoup(page, "html.parser"))
-
-
-def test_a_filtering_session_is_kept_without_a_renewal():
-    client = SessionClient(["B"])
-
-    assert acquire_filtering_session(config([query()]), client)
-    assert client.renewals == 0
-
-
-def test_non_filtering_sessions_are_renewed_until_one_filters():
-    """Identical remote and catch-all pages mean the session ignores f_WT; redraw."""
-    client = SessionClient(["A", "A", "B"])
-
-    assert acquire_filtering_session(config([query()]), client)
-    assert client.renewals == 2
-
-
-def test_the_draws_run_out_when_every_session_ignores_the_filter():
-    client = SessionClient(["A"])
-
-    assert not acquire_filtering_session(config([query()]), client, max_draws=3)
-    assert client.renewals == 2  # renewed between draws, not after the last
-
-
-def test_an_inconclusive_probe_costs_a_draw_and_moves_on():
-    """A failed or cardless probe page proves nothing about the pipeline; redraw."""
-    for state in ("empty", "fail"):
-        client = SessionClient([state, "B"])
-
-        assert acquire_filtering_session(config([query()]), client)
-        assert client.renewals == 1
-
-
-def test_an_empty_remote_page_under_a_populated_one_is_a_filtering_session():
-    """Only a session applying f_WT can serve nothing remote while the unfiltered page has cards."""
-    client = SessionClient(["dry-remote"])
-
-    assert acquire_filtering_session(config([query()]), client)
-    assert client.renewals == 0
-
-
-def test_a_flaky_empty_remote_page_is_refetched_before_it_counts():
-    """One empty remote page settles nothing; the refetch finds the cards and the comparison runs."""
-    client = FlakyRemoteClient()
-
-    assert acquire_filtering_session(config([query()]), client)
-    assert client.remote_fetches == 2
+    assert sum(sink.attribution[queries[0].query_id].values()) == 1
 
 
 # --- fetch_posting -----------------------------------------------------------

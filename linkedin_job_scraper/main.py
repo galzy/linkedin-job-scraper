@@ -80,6 +80,8 @@ def main(config_file: str | Path = CONFIG_PATH, max_pages: int = MAX_PAGES) -> N
         to_refresh = db.postings_to_refresh(cutoff)
         if to_refresh:
             fetch_postings(to_refresh, client, config.http.description_workers, db.record_postings)
+            # A description can supply a workplace type, which the keep-lists judge.
+            flipped += db.refresh_relevance(predicate=relevance_predicate(config))
         else:
             logger.info("No stored jobs are due for a refresh")
 

@@ -7,9 +7,23 @@ from collections.abc import Callable, Collection
 from datetime import datetime
 
 from loguru import logger
-from sqlalchemy import Engine, Row, and_, create_engine, delete, event, func, insert, or_, select, text, update
+from sqlalchemy import (
+    Engine,
+    Row,
+    and_,
+    bindparam,
+    create_engine,
+    delete,
+    event,
+    func,
+    insert,
+    or_,
+    select,
+    text,
+    update,
+)
 
-from linkedin_job_scraper.config import SearchQuery
+from linkedin_job_scraper.config import SearchQuery, WorkplaceType
 from linkedin_job_scraper.constants import (
     TABLE_JOB_QUERIES,
     TABLE_JOBS_RAW,
@@ -39,6 +53,7 @@ from linkedin_job_scraper.store.statements import (
     _update_jobs_by_url,
 )
 from linkedin_job_scraper.verdicts import is_firm
+from linkedin_job_scraper.workplace import infer_workplace_type
 
 # What the per-day fit export carries, in its column order.
 FIT_EXPORT_COLUMNS = (
@@ -534,9 +549,9 @@ class JobsDb:
         """Store fetched descriptions and open-status on rows already stored, matched on job_url.
 
         A job carries either, both, or neither: only the fields that arrived are written, so a failed
-        fetch (both None) touches nothing. A written description is read for its language and for any
-        location it scopes the role to, in the same update. Returns how many descriptions and
-        open-status were written.
+        fetch (both None) touches nothing. A written description is read for its language, for any
+        location it scopes the role to, and for the workplace type it states, in the same update.
+        Returns how many descriptions and open-status were written.
         """
         verified_at = datetime.now().isoformat(sep=" ", timespec="seconds")
         described = [
@@ -557,11 +572,27 @@ class JobsDb:
             for job in jobs
             if job.is_open is not None
         ]
+        inferred = [
+            {"url": job.key, "wt": infer_workplace_type(job.title, job.job_description)}
+            for job in jobs
+            if job.job_description is not None
+        ]
         with self.engine.begin() as conn:
             columns = ["job_description", "description_lang", "stated_locations", "work_eligibility"]
             filled = _update_jobs_by_url(conn, columns, described) if described else 0
             if verified:
                 _update_jobs_by_url(conn, ["is_open", "last_verified"], verified)
+            # Only rows with no type yet, so a stored label is not overwritten.
+            if inferred:
+                conn.execute(
+                    update(JobRow)
+                    .where(
+                        JobRow.job_url == bindparam("url"),
+                        JobRow.workplace_type == WorkplaceType.UNTAGGED.value,
+                    )
+                    .values(workplace_type=bindparam("wt")),
+                    inferred,
+                )
         closed = sum(job.is_open is False for job in jobs)
         return {"described": filled, "checked": len(verified), "closed": closed}
 

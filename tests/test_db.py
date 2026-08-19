@@ -266,6 +266,32 @@ def test_record_postings_fills_the_matching_row(db):
     }
 
 
+def test_record_postings_reads_the_workplace_type_the_description_states(db):
+    db.insert_jobs([job(), job(job_url="https://x/2/"), job(job_url="https://x/3/")])
+    db.record_postings(
+        [
+            job(job_description="This role is fully remote."),
+            job(job_url="https://x/2/", job_description="On-site only, five days a week."),
+            job(job_url="https://x/3/", job_description="We build things."),
+        ]
+    )
+
+    assert dict(rows(db, "job_url", "workplace_type")) == {
+        "https://x/1/": "remote",
+        "https://x/2/": "on_site",
+        "https://x/3/": "untagged",  # the ad states none, so none is claimed
+    }
+
+
+def test_record_postings_leaves_a_type_already_known_alone(db):
+    """A label LinkedIn's own filter wrote outranks anything read out of the text."""
+    db.insert_jobs([job(workplace_type="remote")])
+
+    db.record_postings([job(job_description="On-site only, five days a week.")])
+
+    assert rows(db, "workplace_type") == [("remote",)]
+
+
 def test_record_postings_names_the_description_language(db):
     """A written description is named its language in the same update; an undescribed row stays NULL."""
     db.insert_jobs([job(), job(job_url="https://x/2/"), job(job_url="https://x/3/")])

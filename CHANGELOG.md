@@ -2,7 +2,7 @@
 
 Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @ `8929765` (2024-08-17), rewritten since.
 
-## [Unreleased]
+## [v0.7.0]
 
 ### Changed
 - LinkedIn stopped honouring the `f_WT` workplace filter on its guest search: every value now

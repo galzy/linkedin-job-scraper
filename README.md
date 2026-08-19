@@ -47,9 +47,10 @@ everything here.
   - `location` (string or array, required) — a list runs one query per location, everything else shared.
   - `distance` (string) — max radius from `location`. Omit for none. Names: `ANY` (same as omitting),
     `KM_0` (the resolved point only), `KM_8`, `KM_16`, `KM_40`, `KM_80`, `KM_160`.
-  - `timespan` (string) — how recent. Names: `DAY`, `WEEK`, `MONTH`, `ANY`.
-  - `workplace_type` (array) — per-query keep-list of `on_site` / `remote` / `hybrid`. It is both the
-    types searched and the types kept; `[]` or omit means all three (see [How it works](#how-it-works)).
+  - `timespan` (string) — how recent. Names: `HALF_DAY`, `DAY`, `WEEK`, `MONTH`, `ANY`.
+  - `workplace_type` (array) — per-query keep-list of `on_site` / `remote` / `hybrid`. Filters what is
+    kept, not what is searched, and only once an ad states its type; `[]` or omit keeps every type
+    (see [How it works](#how-it-works)).
 - `title_include` (array) — keep only jobs whose title matches one of these. **Omit** and it becomes
   the terms of every query's `keywords` — usually what you want; set `[]` to disable.
 - `title_exclude` (array) — then drop jobs whose title matches one of these. Entries may
@@ -109,7 +110,6 @@ status tells a scheduler how a run ended:
 | `1` | config or database error |
 | `2` | usage error |
 | `3` | blocked by LinkedIn |
-| `4` | no filtering session drawn (aborted before scraping — see [How it works](#how-it-works)) |
 | `5` | unexpected error |
 
 ### The database
@@ -125,7 +125,7 @@ Every run writes each job it scrapes to **`jobs_raw`** — raw in that it holds 
 | `job_url` | The posting URL; the primary key. Carries LinkedIn's posting id. |
 | `title`, `company`, `location`, `date` | As scraped from the listing. |
 | `country` | The country `location` names, normalized to English; `NULL` when it resolves to none. |
-| `workplace_type` | `on_site` / `remote` / `hybrid`, read from which typed search surfaced the job; `untagged` until one does. |
+| `workplace_type` | `on_site` / `remote` / `hybrid`, read from what the description states outright; `untagged` when it states nothing. Rows scraped before 2026-08-07 carry LinkedIn's own label instead. |
 | `first_seen` | When first stored. A run's new jobs share one timestamp. |
 | `last_seen` | When last scraped. Moves on every sighting; `first_seen` doesn't. |
 | `runs_seen` | How many runs surfaced this job — one per run, however many searches found it. |
@@ -176,19 +176,33 @@ search terms against the title alone; `title_exclude` then names what slips thro
 every query's `keywords` flattened to its terms; a `NOT` expression can't be flattened safely and is
 rejected, so set `title_include` yourself then.
 
-**Workplace type.** LinkedIn never returns a job's workplace type — it's only a search filter you
-send in. So each search runs once per type in its `workplace_type` keep-list, and a job's type is
-read from which variant surfaced it. That multiplies the cheap search-page fetches (~3× at most), not
-the description fetches. The keep-list is thus both a search plan and a filter: narrowing it to
-`[remote]` stops searching the other types *and* rejects them.
+**Workplace type.** LinkedIn never returns a job's workplace type, and since 2026-08-07 its guest
+search ignores the `f_WT` filter that used to stand in for one — every value now returns the same
+unfiltered list, on the API and on the plain search page alike. So each search runs once, unfiltered,
+and a job's type is read from what its description states outright: "fully remote", "on-site only",
+and a handful of equivalents in the other languages these ads are written in.
 
-**The session draw (why a run probes first).** LinkedIn's guest endpoint deals each fresh session one
-of two pipelines, fixed for its life: one honors the workplace filter, the other ignores it and
-serves every variant the same unfiltered list. The draw is roughly a coin flip, so each run probes:
-remote page 1 vs. catch-all page 1. Identical lists mean non-filtering; an empty remote page against a
-catch-all with cards means filtering, since only a session honoring the filter can serve nothing
-remote. It redraws up to 10 times, and if every draw misses, the run aborts with exit 4 rather than
-fake every label.
+Most ads state nothing. Measured against the 2,338 ads LinkedIn had already labelled, the reading
+finds 32% of the known-remote ones and mislabels none of them as on-site — the point being that a
+type it cannot see stays `untagged`, and an `untagged` job is never judged against a keep-list. So
+the keep-list now only rejects an ad that rules remote out in its own words, and the `fit` judge,
+which reads the whole ad, is what actually sorts the rest.
+
+Because the type comes from the description, relevance is decided twice: on title and company when
+the cards land, then again once the descriptions are in and a type may have appeared.
+
+Searching unfiltered returns more per query than searching one workplace type did, which brings a
+broad query over a large market closer to LinkedIn's 1000-result cap. Measured 2026-08-19, the two
+widest queries here — the English expression over the United Kingdom and over Germany, a day's
+window — still land under it, between 700 and 990 results, so nothing is being cut. The headroom is
+thin enough to watch: results come back ranked by keyword relevance rather than by date, so a query
+that does pass the cap loses a tail rather than a random sample. `hit the 100-page ceiling` in the
+log is what says it happened.
+
+Should a query outgrow the cap, the lever is `timespan`: the endpoint honours an arbitrary
+`f_TPR=r<seconds>`, not only the windows LinkedIn's own UI offers, so `HALF_DAY` with the scrape run
+twice a day halves what each query returns while covering the same ground. Shorter windows still
+work; they need a name adding to `TimeFilterType` first.
 
 **Empty pages and blocks.** A block can also arrive as an empty `200`, indistinguishable from a query
 that has run out. Two guards: an empty page is confirmed by two consecutive refetches (the endpoint
@@ -226,8 +240,9 @@ request a minute. The durable fix is to **lower `max_requests_per_minute`** (try
 Each query logs how it ended: `exhausted after N pages` is the healthy case; `page N failed; stopping
 early` means a fetch gave up after all its retries (usually rate limiting), which ends the run —
 lower `max_requests_per_minute`; `hit the 100-page ceiling` means the query has more than 1000
-results and you are seeing only the first 1000, so narrow it with `timespan`, `distance`, or tighter
-`keywords`.
+results and you are seeing only the first 1000, so narrow it with `timespan`, `distance`, a smaller
+`location`, or tighter `keywords`. Unfiltered searches return more, so treat this as something to
+act on rather than note.
 
 #### Logging
 

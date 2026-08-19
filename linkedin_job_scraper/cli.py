@@ -25,11 +25,13 @@ from linkedin_job_scraper.constants import (
     REPORTS_PATH,
 )
 from linkedin_job_scraper.filters import relevance_predicate
+from linkedin_job_scraper.fit import DEFAULT_JUDGE_MODEL, FitJudgeError, judge_batches
 from linkedin_job_scraper.logger import init_logging
 from linkedin_job_scraper.main import main as run_scrape
 from linkedin_job_scraper.net.http import HttpClient
 from linkedin_job_scraper.scrape.scraping import BlockedError, NoFilteringSessionError, fetch_postings
-from linkedin_job_scraper.store.db import JobsDb
+from linkedin_job_scraper.store.db import FIT_EXPORT_COLUMNS, JobsDb
+from linkedin_job_scraper.verdicts import is_firm
 
 SAMPLE_CONFIG = CONFIGS_PATH / "config.sample.yaml"
 
@@ -141,14 +143,8 @@ def status() -> None:
     )
 
 
-def export(path: str | Path = EXPORT_PATH, all_rows: bool = False, descriptions: bool = True) -> None:
-    """Write stored jobs to ``path`` as CSV: the kept set by default, every stored row with ``all_rows``."""
-    if not _has_db():
-        return
-    db = JobsDb(path=str(DB_PATH))
-    columns, rows = db.export_rows(all_rows, descriptions)
-    db.close()
-    dest = Path(path)
+def _write_csv(dest: Path, columns: list[str], rows) -> None:
+    """Write a CSV atomically as UTF-8 with BOM; a failed write never clobbers an existing file."""
     dest.parent.mkdir(parents=True, exist_ok=True)
     line_seps = {0x2028: "\n", 0x2029: "\n"}  # fold Unicode LS/PS to \n; CSV readers mis-split on them
     # Write a temp sibling and swap it in, so a failed write never clobbers a good export.
@@ -159,11 +155,100 @@ def export(path: str | Path = EXPORT_PATH, all_rows: bool = False, descriptions:
             writer.writerow(columns)
             writer.writerows([c.translate(line_seps) if isinstance(c, str) else c for c in row] for row in rows)
         os.replace(tmp, dest)
-    except OSError as e:
+    except OSError:
         tmp.unlink(missing_ok=True)
+        raise
+
+
+def export(path: str | Path = EXPORT_PATH, all_rows: bool = False, descriptions: bool = True) -> None:
+    """Write stored jobs to ``path`` as CSV: the kept set by default, every stored row with ``all_rows``."""
+    if not _has_db():
+        return
+    db = JobsDb(path=str(DB_PATH))
+    columns, rows = db.export_rows(all_rows, descriptions)
+    db.close()
+    dest = Path(path)
+    try:
+        _write_csv(dest, columns, rows)
+    except OSError as e:
         print(f"Could not write {dest}: {e}. If it is open in another program, close it and retry.", file=sys.stderr)
         raise SystemExit(1) from e
     print(f"Exported {len(rows):,} jobs to {dest}")
+
+
+def fit(
+    dest: Path | None = None,
+    days: int = 5,
+    model: str = DEFAULT_JUDGE_MODEL,
+    claude: str = "claude",
+    export_today: bool = False,
+) -> None:
+    """Judge the last ``days`` days' unjudged rows through ``claude``, then write each day's CSV of survivors."""
+    init_logging()
+    if not _has_db():
+        return
+    rubric_path = CONFIGS_PATH / "fit-criteria.md"
+    if not rubric_path.exists():
+        logger.error(f"No fit rubric at {rubric_path}; write one before judging")
+        raise SystemExit(1)
+    if shutil.which(claude) is None:
+        logger.error(f"claude CLI not found at {claude!r}")
+        raise SystemExit(1)
+    rubric = rubric_path.read_text(encoding="utf-8")
+
+    db = JobsDb(path=str(DB_PATH))
+    db.create_schema()
+    today = datetime.now()
+    window = [(today - timedelta(days=back)).strftime("%Y-%m-%d") for back in reversed(range(days))]
+    by_day: dict[str, list] = {}
+    for row in db.fit_cohort(since=window[0]):
+        by_day.setdefault(row.first_seen[:10], []).append(row)
+    failed = []
+    for day in window:
+        if not (rows := by_day.get(day)):
+            continue
+        logger.info(f"{day}: judging {len(rows)} rows")
+        try:
+            # Import batch by batch, so a judge dying mid-day keeps the batches it already won.
+            for verdicts in judge_batches(rows, rubric, claude=claude, model=model):
+                db.import_verdicts(verdicts)
+        except FitJudgeError as e:
+            failed.append(day)
+            logger.error(f"{day}: judging failed — {e}")
+    _export_fit_days(db, dest, window, export_today)
+    db.close()
+    if failed:
+        raise SystemExit(1)
+
+
+def _export_fit_days(db: JobsDb, dest: Path | None, window: list[str], export_today: bool) -> None:
+    """Write each day's CSV of clean-or-"?" arrivals, once: a day is skipped while its file exists.
+
+    Today's file waits for ``export_today`` — the nightly passes it, its scrape having just ended
+    the day; a daytime run must not close out a day still gathering rows. A day still carrying
+    unjudged rows is left for a later run too, so a file never goes out partial.
+    """
+    if dest is None:
+        return
+    if not dest.is_dir():
+        logger.warning(f"{dest} is unreachable; leaving the fit exports to a later run")
+        return
+    for day in window:
+        if day == window[-1] and not export_today:
+            continue
+        out = dest / f"new-jobs-{day}.csv"
+        if out.exists():
+            continue
+        if pending := db.unjudged_on(day):
+            logger.warning(f"{day}: {pending} rows still unjudged; leaving its export to a later run")
+            continue
+        survivors = [row for row in db.fit_export_rows(day) if not is_firm(row.fit_verdict)]
+        try:
+            _write_csv(out, list(FIT_EXPORT_COLUMNS), survivors)
+        except OSError as e:
+            logger.warning(f"Could not write {out}: {e}")
+            continue
+        logger.success(f"{day}: exported {len(survivors)} clean-or-? jobs to {out}")
 
 
 def _confirm_prune(count: int, days: int) -> bool:
@@ -274,6 +359,28 @@ def _export(
     descriptions: Annotated[bool, typer.Option(help="include the job_description column")] = True,
 ) -> None:
     export(path, all_rows, descriptions)
+
+
+@app.command(
+    "fit",
+    help="judge unjudged jobs against configs/fit-criteria.md through a headless claude call, "
+    "then write each day's clean-or-? arrivals to a per-day CSV",
+)
+def _fit(
+    dest: Annotated[
+        Path | None, typer.Option(help="folder for the per-day CSVs; judge without exporting when omitted")
+    ] = None,
+    days: Annotated[int, typer.Option(callback=_positive_days, help="judge and export this many days back")] = 5,
+    model: Annotated[str, typer.Option(help="the model that judges")] = DEFAULT_JUDGE_MODEL,
+    claude: Annotated[str, typer.Option(help="the claude executable to run")] = "claude",
+    export_today: Annotated[
+        bool,
+        typer.Option(
+            "--export-today", help="write today's file too — for the nightly, whose scrape just ended the day"
+        ),
+    ] = False,
+) -> None:
+    fit(dest, days, model, claude, export_today)
 
 
 @app.command("prune", help="permanently delete old irrelevant or closed jobs older than the given number of days")

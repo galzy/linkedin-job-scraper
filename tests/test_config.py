@@ -20,6 +20,13 @@ def test_enum_names_map_to_linkedin_query_values():
     assert (q.distance, q.timespan) == ("25", "r2592000")
 
 
+def test_a_half_day_window_is_offered_beside_linkedins_own_presets():
+    """The endpoint honours any r<seconds>, so a scrape run twice a day can halve its window."""
+    q = load_and_validate_config(raw(timespan="HALF_DAY")).search_queries[0]
+    assert q.timespan == "r43200"
+    assert "f_TPR=r43200" in q.page_url(0)
+
+
 def test_omitted_and_empty_filters_become_empty_strings():
     q = load_and_validate_config(raw()).search_queries[0]
     assert (q.distance, q.timespan) == ("", "")

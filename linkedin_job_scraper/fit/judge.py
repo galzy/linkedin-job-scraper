@@ -8,8 +8,8 @@ from collections.abc import Iterator, Sequence
 
 from loguru import logger
 
+from linkedin_job_scraper.fit.verdicts import PASS, is_wellformed
 from linkedin_job_scraper.language import readable_words
-from linkedin_job_scraper.verdicts import PASS, is_wellformed
 
 DEFAULT_JUDGE_MODEL = "sonnet"
 BATCH_SIZE = 12  # ads per claude call, the size the rubric's pipeline was tuned on

@@ -32,6 +32,9 @@ search_queries:
 
 title_exclude: [senior, manager, intern]
 company_exclude: [badcompany, anotherbadcompany]
+# Keep-list of ISO 639-1 codes for the language the description is written in. [] or omit keeps
+# every language. A description too short to name one is never dropped by this.
+description_lang_include: [en, it]
 http:
   max_requests_per_minute: 10
   search_workers: 3

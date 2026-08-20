@@ -13,6 +13,20 @@ from linkedin_job_scraper.geo import searched_countries
 from linkedin_job_scraper.job import Job
 from linkedin_job_scraper.store.db import FIT_EXPORT_COLUMNS, JobsDb
 
+# Long enough for langdetect to name a language; a shorter ad reads as undetermined.
+ENGLISH_AD = (
+    "We are hiring a backend engineer to build and run our data pipelines in Python, working with "
+    "the team on the API, the database and the weekly release."
+)
+ITALIAN_AD = (
+    "Cerchiamo uno sviluppatore backend per le nostre pipeline di dati, che lavori con il team "
+    "sulle API, sul database e sul rilascio settimanale del software."
+)
+NO_SPONSORSHIP_AD = (
+    "We cannot offer visa sponsorship for this role. You will build and run our backend "
+    "services in Python, working with the team on the API, the database and each release."
+)
+
 
 @pytest.fixture
 def db():
@@ -161,30 +175,30 @@ def test_a_resighting_does_not_reopen_a_closed_job(db):
 
 def test_refresh_relevance_flags_the_rows_the_filters_reject(db):
     db.insert_jobs([job(title="Engineer"), job(title="Chef", job_url="https://x/2/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")
 
     assert dict(rows(db, "title", "is_relevant")) == {"Engineer": 1, "Chef": 0}
 
 
 def test_refresh_relevance_counts_a_reversal_not_a_first_judgment(db):
     db.insert_jobs([job(title="Engineer")])
-    assert db.refresh_relevance(lambda title, company, workplace, qids: True) == 0  # first verdict, not a flip
-    assert db.refresh_relevance(lambda title, company, workplace, qids: False) == 1  # relevant -> irrelevant
-    assert db.refresh_relevance(lambda title, company, workplace, qids: False) == 0  # unchanged
+    assert db.refresh_relevance(lambda title, company, workplace, lang, qids: True) == 0  # first verdict, not a flip
+    assert db.refresh_relevance(lambda title, company, workplace, lang, qids: False) == 1  # relevant -> irrelevant
+    assert db.refresh_relevance(lambda title, company, workplace, lang, qids: False) == 0  # unchanged
 
 
 def test_refresh_relevance_rejudges_rows_this_run_never_scraped(db):
     """The verdict follows config.yaml, not the job, so editing the config stales every row."""
     db.insert_jobs([job(title="Chef")])
-    db.refresh_relevance(lambda title, company, workplace, qids: False)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: False)
 
-    assert db.refresh_relevance(lambda title, company, workplace, qids: True) == 1
+    assert db.refresh_relevance(lambda title, company, workplace, lang, qids: True) == 1
     assert rows(db, "is_relevant") == [(1,)]
 
 
 def test_the_filtered_view_hides_the_rows_the_filters_reject(db):
     db.insert_jobs([job(title="Engineer"), job(title="Chef", job_url="https://x/2/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")
 
     assert rows(db, "title", table="jobs_filtered") == [("Engineer",)]
     assert len(rows(db, "title")) == 2  # the raw row is still there to audit
@@ -193,7 +207,7 @@ def test_the_filtered_view_hides_the_rows_the_filters_reject(db):
 def test_export_rows_returns_the_kept_set_by_default_and_every_row_with_all(db):
     """The default export is the filtered view's kept set; all_rows widens it to every stored row."""
     db.insert_jobs([job(title="Engineer"), job(title="Chef", job_url="https://x/2/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")
     db.record_postings([job(is_open=False)])  # the relevant Engineer's posting has since closed
 
     _, kept = db.export_rows()
@@ -235,7 +249,7 @@ def test_refresh_dup_counts_counts_other_kept_rows_sharing_a_posting(db):
             job(title="Chef", job_url="https://x/3/"),
         ]
     )
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     assert all(n is None for (n,) in rows(db, "dup_count"))  # NULL until counted
 
     db.refresh_dup_counts()
@@ -247,7 +261,7 @@ def test_refresh_dup_counts_counts_other_kept_rows_sharing_a_posting(db):
 def test_refresh_dup_counts_counts_only_the_kept_set(db):
     """A closed or irrelevant twin drops out of the count; run the pass again to settle it."""
     db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/"), job(job_url="https://x/3/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     db.refresh_dup_counts()
     assert {n for (_, n) in rows(db, "job_url", "dup_count")} == {2}  # each of three shares with the other two
 
@@ -297,8 +311,8 @@ def test_record_postings_names_the_description_language(db):
     db.insert_jobs([job(), job(job_url="https://x/2/"), job(job_url="https://x/3/")])
     db.record_postings(
         [
-            job(job_description="We are hiring a backend engineer to build data pipelines in Python."),
-            job(job_url="https://x/2/", job_description="Cerchiamo uno sviluppatore backend per le nostre pipeline."),
+            job(job_description=ENGLISH_AD),
+            job(job_url="https://x/2/", job_description=ITALIAN_AD),
         ]
     )
 
@@ -352,7 +366,7 @@ def test_record_postings_leaves_untouched_the_fields_a_job_did_not_carry(db):
 
 def test_the_filtered_view_hides_closed_jobs_but_keeps_open_and_unchecked_ones(db):
     db.insert_jobs([job(), job(job_url="https://x/2/"), job(job_url="https://x/3/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     db.record_postings([job(is_open=False), job(job_url="https://x/2/", is_open=True)])
     with db.engine.begin() as conn:  # x/3 as a legacy row never checked
         conn.execute(text("UPDATE jobs_raw SET is_open = NULL WHERE job_url = 'https://x/3/'"))
@@ -363,11 +377,11 @@ def test_the_filtered_view_hides_closed_jobs_but_keeps_open_and_unchecked_ones(d
 
 def test_clear_dead_descriptions_drops_text_on_rows_the_view_hides(db):
     """Descriptions on non-kept rows (irrelevant or closed) are dropped; kept text and its signals survive."""
-    english = "We are hiring a backend engineer to build data pipelines in Python."
+    english = ENGLISH_AD
     db.insert_jobs(
         [job(job_url="https://x/1/"), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")]
     )
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")  # x/3 Chef is irrelevant
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")  # x/3 Chef is irrelevant
     db.record_postings(
         [
             job(job_url="https://x/1/", job_description=english),  # relevant, open -> kept
@@ -398,7 +412,7 @@ def test_prune_old_deletes_old_irrelevant_and_closed_jobs_and_their_attributions
                 job(title="Chef", date="", job_url="https://x/5/"),  # irrelevant, no date -> old first_seen -> pruned
             ]
         )
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")
     db.record_postings([job(job_url="https://x/3/", is_open=False)])
     db.record_attribution({"q1": Counter({"https://x/1/": 1, "https://x/2/": 1})}, "2024-01-01 00:00:00")
 
@@ -420,7 +434,7 @@ def test_prune_old_ignores_not_yet_judged_rows(db):
 
 def test_postings_to_refresh_includes_relevant_rows_missing_a_description_at_any_age(db):
     db.insert_jobs([job(date="2024-01-01"), job(title="Chef", job_url="https://x/2/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")
 
     # The cutoff is well before the posting date, so only the missing-description branch can match.
     assert [j.key for j in db.postings_to_refresh("2020-01-01 00:00:00")] == ["https://x/1/"]
@@ -429,7 +443,7 @@ def test_postings_to_refresh_includes_relevant_rows_missing_a_description_at_any
 def test_postings_to_refresh_includes_a_described_row_whose_open_status_was_never_checked(db):
     """A legacy row keeps its description but has is_open NULL; it is fetched on sight, not aged into."""
     db.insert_jobs([job(date="2024-01-01")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     with db.engine.begin() as conn:
         conn.execute(text("UPDATE jobs_raw SET job_description = 'd', is_open = NULL"))
 
@@ -439,7 +453,7 @@ def test_postings_to_refresh_includes_a_described_row_whose_open_status_was_neve
 
 def test_postings_to_refresh_rechecks_an_aged_open_job_but_not_one_verified_recently(db):
     db.insert_jobs([job(date="2024-01-01"), job(date="2024-01-01", job_url="https://x/2/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     with clock("2024-01-02 00:00:00"):  # x/1 last verified before the cutoff
         db.record_postings([job(job_description="d", is_open=True)])
     with clock("2024-01-10 00:00:00"):  # x/2 last verified after it
@@ -450,7 +464,7 @@ def test_postings_to_refresh_rechecks_an_aged_open_job_but_not_one_verified_rece
 
 def test_postings_to_refresh_leaves_a_still_fresh_posting_alone(db):
     db.insert_jobs([job(date="2024-02-01")])  # posted after the cutoff
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     with clock("2024-02-02 00:00:00"):
         db.record_postings([job(job_description="d", is_open=True)])
 
@@ -459,7 +473,7 @@ def test_postings_to_refresh_leaves_a_still_fresh_posting_alone(db):
 
 def test_postings_to_refresh_skips_a_job_already_closed(db):
     db.insert_jobs([job(date="2024-01-01")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     with clock("2024-01-02 00:00:00"):
         db.record_postings([job(job_description="d", is_open=False)])
 
@@ -469,7 +483,7 @@ def test_postings_to_refresh_skips_a_job_already_closed(db):
 def test_postings_to_refresh_skips_a_closed_job_still_missing_a_description(db):
     """A gone posting (404) is closed with its description never fetched; re-fetching only 404s again."""
     db.insert_jobs([job(date="2024-01-01")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     db.record_postings([job(is_open=False)])  # closed, job_description still NULL
 
     assert db.postings_to_refresh("2024-01-08 00:00:00") == []
@@ -478,7 +492,7 @@ def test_postings_to_refresh_skips_a_closed_job_still_missing_a_description(db):
 def test_postings_to_refresh_skips_a_job_already_turned_down(db):
     """Config keeps it relevant, but whether it is still open stopped mattering once it was judged."""
     db.insert_jobs([job(job_url="https://x/1/"), job(job_url="https://x/2/", title="Other")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     db.import_verdicts({"https://x/1/": "d: not software development"})
 
     assert [j.key for j in db.postings_to_refresh("2024-01-08 00:00:00")] == ["https://x/2/"]
@@ -487,7 +501,7 @@ def test_postings_to_refresh_skips_a_job_already_turned_down(db):
 def test_postings_to_refresh_keeps_a_job_only_suspected_of_a_problem(db):
     """A "?" means revisit, not rejected, so the row stays in the set."""
     db.insert_jobs([job()])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     db.import_verdicts({"https://x/1/": "c?: UK listing"})
 
     assert [j.key for j in db.postings_to_refresh("2024-01-08 00:00:00")] == ["https://x/1/"]
@@ -529,7 +543,7 @@ def test_a_verdict_does_not_reach_a_different_posting(db):
 
 def test_fit_cohort_is_the_relevant_open_rows_nobody_has_judged(db):
     db.insert_jobs([job(), job(title="Other", job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: title != "Chef")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title != "Chef")
     db.import_verdicts({"https://x/1/": "d: not software development"})
 
     assert [row.job_url for row in db.fit_cohort()] == ["https://x/2/"]
@@ -538,7 +552,7 @@ def test_fit_cohort_is_the_relevant_open_rows_nobody_has_judged(db):
 def test_fit_cohort_leaves_out_a_posting_the_check_found_closed(db):
     """A removed listing is not worth reading, judged or not."""
     db.insert_jobs([job(), job(title="Other", job_url="https://x/2/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     db.record_postings([job(job_description="Gone.", is_open=False)])
 
     assert [row.job_url for row in db.fit_cohort()] == ["https://x/2/"]
@@ -549,7 +563,7 @@ def test_fit_cohort_reads_newest_first_and_can_start_at_a_date(db):
         db.insert_jobs([job(date="2024-01-01")])
     with clock("2024-02-01 00:00:00"):
         db.insert_jobs([job(title="Other", date="2024-02-01", job_url="https://x/2/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
 
     assert [row.job_url for row in db.fit_cohort()] == ["https://x/2/", "https://x/1/"]
     # since reads first_seen, not the posting date: it scopes a pass to what one run brought in
@@ -561,7 +575,7 @@ def test_unjudged_on_counts_one_days_kept_rows_awaiting_a_verdict(db):
         db.insert_jobs([job(), job(title="Other", job_url="https://x/2/")])
     with clock("2024-01-02 09:00:00"):
         db.insert_jobs([job(title="Third", job_url="https://x/3/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     db.import_verdicts({"https://x/1/": "d: not software development"})
 
     assert db.unjudged_on("2024-01-01") == 1
@@ -574,7 +588,7 @@ def test_fit_export_rows_are_one_days_kept_judged_rows(db):
         db.insert_jobs([job(), job(title="Other", job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
     with clock("2024-01-02 09:00:00"):
         db.insert_jobs([job(title="Fourth", job_url="https://x/4/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: title != "Chef")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title != "Chef")
     db.import_verdicts({"https://x/1/": "", "https://x/2/": "c?: UK listing", "https://x/3/": "", "https://x/4/": ""})
 
     exported = db.fit_export_rows("2024-01-01")
@@ -584,8 +598,8 @@ def test_fit_export_rows_are_one_days_kept_judged_rows(db):
 
 def test_fit_cohort_carries_the_signals_judging_reads_beside_the_description(db):
     db.insert_jobs([job()])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
-    db.record_postings([job(job_description="We cannot offer visa sponsorship for this role.")])
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
+    db.record_postings([job(job_description=NO_SPONSORSHIP_AD)])
 
     (row,) = db.fit_cohort()
     assert row.description_lang == "en"
@@ -595,7 +609,7 @@ def test_fit_cohort_carries_the_signals_judging_reads_beside_the_description(db)
 def test_postings_to_refresh_ages_a_dateless_card_by_first_seen(db):
     with clock("2024-01-01 00:00:00"):
         db.insert_jobs([job(date="")])  # no posting date, so first_seen stands in for it
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     with clock("2024-01-02 00:00:00"):
         db.record_postings([job(date="", job_description="d", is_open=True)])
 
@@ -605,7 +619,7 @@ def test_postings_to_refresh_ages_a_dateless_card_by_first_seen(db):
 def test_relevant_jobs_without_description_keeps_only_relevant_rows_still_lacking_one(db):
     """NULL covers both a job never described and a fetch that failed; both stay on the worklist."""
     db.insert_jobs([job(), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")
     db.record_postings([job(job_url="https://x/2/", job_description="Build things.")])
 
     assert [j.key for j in db.relevant_jobs_without_description()] == ["https://x/1/"]
@@ -615,7 +629,7 @@ def test_relevant_jobs_without_description_counts_the_not_found_placeholder_as_d
     """A page that loaded but carried no description is a real answer, not a failure — storing
     the placeholder is what stops it being refetched on every future run."""
     db.insert_jobs([job()])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     db.record_postings([job(job_description=NO_DESCRIPTION)])
 
     assert db.relevant_jobs_without_description() == []
@@ -830,7 +844,7 @@ def test_last_run_before_any_run_is_none(db):
 
 def test_totals_counts_stored_relevant_and_still_undescribed(db):
     db.insert_jobs([job(), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")
     db.record_postings([job(job_description="Build things.")])
 
     assert db.totals() == {"stored": 3, "relevant": 2, "missing_descriptions": 1, "unjudged": 2}
@@ -843,7 +857,7 @@ def test_totals_on_an_empty_database_are_zero(db):
 def test_totals_stop_counting_a_row_as_unjudged_once_a_verdict_is_written(db):
     """The unjudged count is the cohort's own size, so status says how much judging is left."""
     db.insert_jobs([job(), job(title="Other", job_url="https://x/2/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     assert db.totals()["unjudged"] == 2
 
     db.import_verdicts({"https://x/1/": "d: not software development"})
@@ -853,7 +867,7 @@ def test_totals_stop_counting_a_row_as_unjudged_once_a_verdict_is_written(db):
 
 def test_relevant_among_counts_only_relevant_rows_within_the_given_urls(db):
     db.insert_jobs([job(), job(job_url="https://x/2/"), job(title="Chef", job_url="https://x/3/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")
     # x/1 and x/2 are relevant Engineers; x/3 (Chef) is rejected. The count is scoped to the urls
     # passed, so a relevant row outside the set (x/2) does not count, unlike the cumulative totals().
     assert db.relevant_among({"https://x/1/", "https://x/3/"}) == 1
@@ -865,7 +879,7 @@ def test_relevant_among_counts_only_relevant_rows_within_the_given_urls(db):
 def test_refresh_relevance_judges_on_the_stored_workplace_type(db):
     db.insert_jobs([job(workplace_type="remote"), job(job_url="https://x/2/", workplace_type="on_site")])
 
-    db.refresh_relevance(lambda title, company, workplace, qids: workplace != "on_site")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: workplace != "on_site")
     assert dict(rows(db, "workplace_type", "is_relevant")) == {"remote": 1, "on_site": 0}
 
 

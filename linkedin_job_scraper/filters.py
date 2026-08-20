@@ -5,7 +5,7 @@ from collections.abc import Callable
 from linkedin_job_scraper.config import Config, WorkplaceType
 
 
-def relevance_predicate(config: Config) -> Callable[[str, str, str, set[str]], bool]:
+def relevance_predicate(config: Config) -> Callable[[str, str, str, str | None, set[str]], bool]:
     """Whether a job survives the config's filters, given the queries that surfaced it.
 
     Title and company are global; workplace type is per query — a job is kept if any query that
@@ -15,9 +15,10 @@ def relevance_predicate(config: Config) -> Callable[[str, str, str, set[str]], b
     title_include = [phrase.lower() for phrase in config.title_include]
     title_exclude = [phrase.lower() for phrase in config.title_exclude]
     company_exclude = {name.lower() for name in config.company_exclude}  # whole-name match, not substring
+    lang_include = {code.lower() for code in config.description_lang_include}
     keep_lists = {variant.query_id: variant.workplace_type for variant in config.scrape_queries}
 
-    def keep(title: str, company: str, workplace_type: str, query_ids: set[str]) -> bool:
+    def keep(title: str, company: str, workplace_type: str, description_lang: str | None, query_ids: set[str]) -> bool:
         title, company = " ".join(title.lower().split()), company.lower()
         # An empty include list means "no filter", not "match nothing". The exclude checks need
         # no such guard: neither an empty list nor an empty set excludes anything.
@@ -26,6 +27,10 @@ def relevance_predicate(config: Config) -> Callable[[str, str, str, set[str]], b
         if any(phrase in title for phrase in title_exclude):
             return False
         if company in company_exclude:
+            return False
+        # A language no description was long enough to name is not judged against a keep-list, so the
+        # first fetch still happens and the next refresh decides the row on the text it came back with.
+        if lang_include and description_lang and description_lang.lower() not in lang_include:
             return False
         # A type the ad never stated is not judged against a keep-list.
         if workplace_type == WorkplaceType.UNTAGGED.value:

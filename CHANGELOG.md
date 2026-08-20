@@ -2,6 +2,13 @@
 
 Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedinscraper) @ `8929765` (2024-08-17), rewritten since.
 
+## [Unreleased]
+
+### Fixed
+- The `fit` judge read an empty verdict as "no condition applies" — also what a judge that has
+  stopped reading returns for a whole batch, which cleared 43 of 1,050 ads on 2026-08-20. A clean
+  verdict is now `ok`, and empty text fails `is_wellformed`, so such a batch fails loudly instead.
+
 ## [v0.7.0]
 
 ### Changed

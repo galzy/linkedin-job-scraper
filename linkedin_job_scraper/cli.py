@@ -25,13 +25,13 @@ from linkedin_job_scraper.constants import (
     REPORTS_PATH,
 )
 from linkedin_job_scraper.filters import relevance_predicate
-from linkedin_job_scraper.fit import DEFAULT_JUDGE_MODEL, FitJudgeError, judge_batches
+from linkedin_job_scraper.fit import DEFAULT_JUDGE_MODEL, FitJudgeError, judge_batches, looks_lenient
 from linkedin_job_scraper.logger import init_logging
 from linkedin_job_scraper.main import main as run_scrape
 from linkedin_job_scraper.net.http import HttpClient
 from linkedin_job_scraper.scrape.scraping import BlockedError, fetch_postings
 from linkedin_job_scraper.store.db import FIT_EXPORT_COLUMNS, JobsDb
-from linkedin_job_scraper.verdicts import is_firm
+from linkedin_job_scraper.verdicts import PASS, is_firm
 
 SAMPLE_CONFIG = CONFIGS_PATH / "config.sample.yaml"
 
@@ -208,13 +208,19 @@ def fit(
         if not (rows := by_day.get(day)):
             continue
         logger.info(f"{day}: judging {len(rows)} rows")
+        clean = judged = 0
         try:
             # Import batch by batch, so a judge dying mid-day keeps the batches it already won.
             for verdicts in judge_batches(rows, rubric, claude=claude, model=model):
                 db.import_verdicts(verdicts)
+                judged += len(verdicts)
+                clean += sum(1 for verdict in verdicts.values() if verdict == PASS)
         except FitJudgeError as e:
             failed.append(day)
             logger.error(f"{day}: judging failed — {e}")
+        if looks_lenient(clean, judged):
+            failed.append(day)
+            logger.error(f"{day}: {clean} of {judged} ads came back clean — read them before trusting the day")
     _export_fit_days(db, dest, window, export_today)
     db.close()
     if failed:

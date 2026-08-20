@@ -8,7 +8,7 @@ from collections.abc import Iterator, Sequence
 
 from loguru import logger
 
-from linkedin_job_scraper.constants import NO_DESCRIPTION
+from linkedin_job_scraper.language import readable_words
 from linkedin_job_scraper.verdicts import PASS, is_wellformed
 
 DEFAULT_JUDGE_MODEL = "sonnet"
@@ -16,6 +16,10 @@ BATCH_SIZE = 12  # ads per claude call, the size the rubric's pipeline was tuned
 _DESCRIPTION_CAP = 3500
 _HITS_PER_KIND = 4
 _TIMEOUT = 600  # seconds per batch; a judge slower than this has hung
+
+_MIN_WORDS = 25  # under this an ad is a skeleton of bullets, which the judge waves through half the time
+_CLEAN_ALARM = 0.03  # no day the judge read properly has cleared 1.2%; the day it stopped reading hit 4.1%
+_ALARM_FLOOR = 50  # under this a day is too small for a share to mean anything
 
 # Pointers that speed the judge's reading; the prompt tells it they decide nothing. "Go" keeps its
 # case, or every "go to" would hit.
@@ -76,6 +80,22 @@ class FitJudgeError(Exception):
     """A batch that produced no valid verdicts, even on retry."""
 
 
+def looks_lenient(clean: int, judged: int) -> bool:
+    """Whether a day cleared too many ads to trust — the shape of a judge that stopped reading them."""
+    return judged >= _ALARM_FLOOR and clean / judged > _CLEAN_ALARM
+
+
+def _settled(row) -> str | None:
+    """The verdict a rule already decides, or None when the ad is for the judge to read.
+
+    Language is not among them: ``description_lang_include`` settles that a layer earlier, in the
+    relevance predicate, where a config edit and a recompute can take it back.
+    """
+    if readable_words(row.job_description) < _MIN_WORDS:
+        return "d?: no readable description"
+    return None
+
+
 def _hits(description: str) -> list[str]:
     """One "kind hits: …" line per matching pattern, each hit the trimmed line around a match."""
     lines = []
@@ -108,8 +128,6 @@ def _ad(row) -> str:
         f" | dup_count: {row.dup_count if row.dup_count is not None else '?'}"
     )
     description = row.job_description
-    if not description or description == NO_DESCRIPTION:
-        return f'{header}\n(no description available — judge from the fields above, preferring "?" codes)'
     capped = description[:_DESCRIPTION_CAP]
     return "\n".join([header, *_hits(description), f"description (first {_DESCRIPTION_CAP} chars):", capped])
 
@@ -153,9 +171,19 @@ def judge_batches(
 ) -> Iterator[dict[str, str]]:
     """Judge the rows in batches, yielding verdicts by job_url per batch so each lands as it is won.
 
-    A batch is retried once; failing again raises FitJudgeError, keeping what earlier batches yielded.
+    Rows a rule settles skip the judge and come out first. A batch is retried once; failing again
+    raises FitJudgeError, keeping what earlier batches yielded.
     """
-    batches = [rows[i : i + BATCH_SIZE] for i in range(0, len(rows), BATCH_SIZE)]
+    ruled, unread = {}, []
+    for row in rows:
+        if verdict := _settled(row):
+            ruled[row.job_url] = verdict
+        else:
+            unread.append(row)
+    if ruled:
+        logger.info(f"{len(ruled)} rows settled by rule; {len(unread)} going to the judge")
+        yield ruled
+    batches = [unread[i : i + BATCH_SIZE] for i in range(0, len(unread), BATCH_SIZE)]
     for number, batch in enumerate(batches, 1):
         by_jid = {row.job_url.rstrip("/").rsplit("/", 1)[-1]: row.job_url for row in batch}
         prompt = _PROMPT.format(

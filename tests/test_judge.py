@@ -4,12 +4,12 @@ from unittest.mock import patch
 
 import pytest
 
-from linkedin_job_scraper import fit
 from linkedin_job_scraper.cli import _export_fit_days
-from linkedin_job_scraper.fit import FitJudgeError, _ad, _parse, _settled, judge_batches, looks_lenient
+from linkedin_job_scraper.fit import judge
+from linkedin_job_scraper.fit.judge import FitJudgeError, _ad, _parse, _settled, judge_batches, looks_lenient
+from linkedin_job_scraper.fit.verdicts import PASS
 from linkedin_job_scraper.job import Job
 from linkedin_job_scraper.store.db import JobsDb
-from linkedin_job_scraper.verdicts import PASS
 
 READABLE = (
     "We build backend services in Python and keep them running in production, working across "
@@ -96,14 +96,14 @@ def test_parse_fails_without_json():
 
 def test_judge_batches_retries_a_bad_reply_once(monkeypatch):
     replies = iter(["not json at all", '{"101": "g?: java-leaning ad"}'])
-    monkeypatch.setattr(fit, "_ask", lambda prompt, claude, model: next(replies))
+    monkeypatch.setattr(judge, "_ask", lambda prompt, claude, model: next(replies))
 
     batches = list(judge_batches([row()], rubric="rubric", claude="claude"))
     assert batches == [{"https://www.linkedin.com/jobs/view/101/": "g?: java-leaning ad"}]
 
 
 def test_judge_batches_gives_up_after_two_failures(monkeypatch):
-    monkeypatch.setattr(fit, "_ask", lambda prompt, claude, model: "still not json")
+    monkeypatch.setattr(judge, "_ask", lambda prompt, claude, model: "still not json")
 
     with pytest.raises(FitJudgeError, match="failed twice"):
         list(judge_batches([row()], rubric="rubric", claude="claude"))
@@ -112,7 +112,7 @@ def test_judge_batches_gives_up_after_two_failures(monkeypatch):
 def test_a_failing_batch_keeps_what_earlier_batches_won(monkeypatch):
     """13 rows are two batches; the second dying must not take the first down with it."""
     replies = iter([json.dumps({str(n): PASS for n in range(100, 112)}), "boom", "boom"])
-    monkeypatch.setattr(fit, "_ask", lambda prompt, claude, model: next(replies))
+    monkeypatch.setattr(judge, "_ask", lambda prompt, claude, model: next(replies))
 
     won = []
     with pytest.raises(FitJudgeError):
@@ -128,7 +128,7 @@ def test_a_rubric_with_braces_survives_prompt_building(monkeypatch):
         captured["prompt"] = prompt
         return '{"101": "ok"}'
 
-    monkeypatch.setattr(fit, "_ask", ask)
+    monkeypatch.setattr(judge, "_ask", ask)
     list(judge_batches([row()], rubric="writing `{jid: verdict}` JSON", claude="claude"))
     assert "{jid: verdict}" in captured["prompt"]
 

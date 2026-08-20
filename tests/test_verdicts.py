@@ -1,6 +1,6 @@
 import pytest
 
-from linkedin_job_scraper.verdicts import PASS, is_firm, is_wellformed
+from linkedin_job_scraper.fit.verdicts import PASS, is_firm, is_wellformed
 
 
 @pytest.mark.parametrize("verdict", [None, "", "   "])

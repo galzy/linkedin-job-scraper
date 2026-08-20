@@ -25,13 +25,13 @@ from linkedin_job_scraper.constants import (
     REPORTS_PATH,
 )
 from linkedin_job_scraper.filters import relevance_predicate
-from linkedin_job_scraper.fit import DEFAULT_JUDGE_MODEL, FitJudgeError, judge_batches, looks_lenient
+from linkedin_job_scraper.fit.judge import DEFAULT_JUDGE_MODEL, FitJudgeError, judge_batches, looks_lenient
+from linkedin_job_scraper.fit.verdicts import PASS, is_firm
 from linkedin_job_scraper.logger import init_logging
 from linkedin_job_scraper.main import main as run_scrape
 from linkedin_job_scraper.net.http import HttpClient
 from linkedin_job_scraper.scrape.scraping import BlockedError, fetch_postings
 from linkedin_job_scraper.store.db import FIT_EXPORT_COLUMNS, JobsDb
-from linkedin_job_scraper.verdicts import PASS, is_firm
 
 SAMPLE_CONFIG = CONFIGS_PATH / "config.sample.yaml"
 

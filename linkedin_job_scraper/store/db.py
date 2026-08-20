@@ -30,6 +30,7 @@ from linkedin_job_scraper.constants import (
     TABLE_RUNS,
     VIEW_JOBS_FILTERED,
 )
+from linkedin_job_scraper.fit.verdicts import is_firm
 from linkedin_job_scraper.geo import country_of
 from linkedin_job_scraper.job import Job
 from linkedin_job_scraper.language import description_lang
@@ -52,7 +53,6 @@ from linkedin_job_scraper.store.statements import (
     _row,
     _update_jobs_by_url,
 )
-from linkedin_job_scraper.verdicts import is_firm
 from linkedin_job_scraper.workplace import infer_workplace_type
 
 # What the per-day fit export carries, in its column order.

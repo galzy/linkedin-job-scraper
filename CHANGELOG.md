@@ -20,6 +20,7 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
 ### Changed
 - The language of a description is judged on its words of prose rather than its character count: a
   skeleton of bullet dashes clears twenty characters and still classifies confidently.
+- The judging modules sit in a `fit` package: `fit/judge.py` and `fit/verdicts.py`.
 
 ## [v0.7.0]
 

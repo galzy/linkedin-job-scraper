@@ -170,7 +170,7 @@ def test_status_prints_the_last_run_and_the_stored_totals(tmp_path, monkeypatch,
             Job(title="Chef", company="ACME", date="2024-01-01", job_url="https://x/2/"),
         ]
     )
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")
     db.record_run(
         started_at="2024-01-01 09:00:00",
         finished_at="2024-01-01 09:05:00",
@@ -260,7 +260,7 @@ def test_export_normalizes_unicode_line_separators(tmp_path, monkeypatch):
     db.create_schema()
     seen = Job(title="Engineer", company="ACME", date="2024-01-01", job_url="https://x/1/")
     db.insert_jobs([seen])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     db.record_postings([seen.with_posting("line1" + chr(0x2028) + "line2", True)])
     db.close()
     monkeypatch.setattr(cli, "DB_PATH", db_path)
@@ -337,7 +337,7 @@ def _seed_one_relevant_one_irrelevant(db_path):
             Job(title="Chef", company="ACME", date="2020-01-01", job_url="https://x/2/"),
         ]
     )
-    db.refresh_relevance(lambda title, company, workplace, qids: title == "Engineer")
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: title == "Engineer")
     db.close()
 
 
@@ -383,7 +383,7 @@ def test_prune_without_matching_rows_never_prompts(tmp_path, monkeypatch):
     db = JobsDb(path=str(db_path))
     db.create_schema()
     db.insert_jobs([Job(title="Engineer", company="ACME", date="2020-01-01", job_url="https://x/1/")])
-    db.refresh_relevance(lambda title, company, workplace, qids: True)  # relevant and open -> not prunable
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)  # relevant and open -> not prunable
     db.close()
     monkeypatch.setattr(cli, "DB_PATH", db_path)
     monkeypatch.setenv(LOG_DIR_ENV, str(tmp_path / "logs"))

@@ -57,11 +57,18 @@ everything here.
   themselves be anchored lists, flattened on load, so you can group phrases into named sections
   (see [Reusing a value across queries](#reusing-a-value-across-queries)).
 - `company_exclude` (array) — then drop jobs whose company name equals one of these.
+- `description_lang_include` (array) — then drop jobs whose description is written in a language
+  outside this keep-list, as ISO 639-1 codes (`[en, it]`). `[]` or omit keeps every language.
 - `http` (object) — request-layer tuning; every field optional. See [Tuning](#tuning).
 
 The two title filters match **case-insensitively on substrings**, and a list matches if *any* entry
 does: `title_exclude: [senior]` drops `Senior-Adjacent Engineer`. `company_exclude` matches the
 **whole company name** (case-insensitively). An empty list disables that filter.
+
+`description_lang_include` can only judge a row once its description has been fetched, so a job is
+kept on sight and decided on the next refresh. A rejected row keeps its `description_lang`, so
+`SELECT description_lang, count(*) FROM jobs_raw WHERE is_relevant = 0 GROUP BY 1` says what the
+keep-list is costing you, and widening it plus `recompute` takes it back.
 
 **Gotchas**
 
@@ -131,7 +138,7 @@ Every run writes each job it scrapes to **`jobs_raw`** — raw in that it holds 
 | `runs_seen` | How many runs surfaced this job — one per run, however many searches found it. |
 | `is_relevant` | Whether the config's filters keep the job. `NULL` until first judged, then recomputed every run. |
 | `job_description` | `NULL` until the job passes the filters, then its full text — or `Could not find job description` when the page genuinely has none. Dropped back to `NULL` if the job later stops being kept (rejected or closed); it re-fetches should it become relevant again. |
-| `description_lang` | The ISO 639-1 code the description reads as (`en`, `de`, `it`). A local-language ad usually wants that language, so it's a rough proxy for whether a role is open to non-local candidates. `NULL` while no description exists or the text is too short to judge. |
+| `description_lang` | The ISO 639-1 code the description reads as (`en`, `de`, `it`). A local-language ad usually wants that language, so it's a rough proxy for whether a role is open to non-local candidates. `NULL` while no description exists or it holds under 20 words of prose — an ad scraped down to a skeleton of bullets classifies as confidently as a real one, and `description_lang_include` would act on that. |
 | `stated_locations` | Where the ad's own text says you must be, comma-separated and normalized to English; `EU` stands in for a clause open to the whole region. `NULL` when the ad scopes nowhere. Read from the description, so it can disagree with `country`, which comes from the card. |
 | `work_eligibility` | What the ad requires you to already hold — `clearance`, `no sponsorship`, or both. `NULL` when it sets neither, which is the ordinary case. Read in English only, the language such boilerplate arrives in. |
 | `fit_verdict` | The fit verdict, codes and reasons both (`a: RAL EUR 27-32k; g: telco IP networking`), written by hand or by the `fit` command. `ok` when the judge read the ad and no condition applied; `NULL` until judged, so silence from a judge can never pass for a clean bill. A row carrying a code stated outright drops out of the refresh set; one carrying only `?` codes does not. |

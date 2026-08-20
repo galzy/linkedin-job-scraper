@@ -120,7 +120,7 @@ def day_db(*jobs_by_day, judge=None):
         with patch("linkedin_job_scraper.store.db.datetime") as dt:
             dt.now.return_value.isoformat.return_value = f"{day} 09:00:00"
             db.insert_jobs(jobs)
-    db.refresh_relevance(lambda title, company, workplace, qids: True)
+    db.refresh_relevance(lambda title, company, workplace, lang, qids: True)
     if judge:
         db.import_verdicts(judge)
     return db

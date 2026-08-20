@@ -9,6 +9,14 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
   stopped reading returns for a whole batch, which cleared 43 of 1,050 ads on 2026-08-20. A clean
   verdict is now `ok`, and empty text fails `is_wellformed`, so such a batch fails loudly instead.
 
+### Added
+- `description_lang_include`, a config keep-list of ISO 639-1 codes for the language a description is
+  written in. A description too short to name a language is never dropped by it.
+
+### Changed
+- The language of a description is judged on its words of prose rather than its character count: a
+  skeleton of bullet dashes clears twenty characters and still classifies confidently.
+
 ## [v0.7.0]
 
 ### Changed

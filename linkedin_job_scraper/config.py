@@ -230,6 +230,7 @@ class Config(BaseModel):
     title_exclude: list[str] = []
     title_include: list[str] | None = None
     company_exclude: list[str] = []
+    description_lang_include: list[str] = []  # keep-list of ISO 639-1 codes; empty keeps every language
 
     @property
     def scrape_queries(self) -> list[SearchQuery]:

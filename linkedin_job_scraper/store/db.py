@@ -347,7 +347,7 @@ class JobsDb:
         logger.info(f"New jobs added to {TABLE_JOBS_RAW}: {len(new):,}")
         return new
 
-    def refresh_relevance(self, predicate: Callable[[str, str, str, set[str]], bool]) -> int:
+    def refresh_relevance(self, predicate: Callable[[str, str, str, str | None, set[str]], bool]) -> int:
         """Re-decide is_relevant for every stored row, returning how many settled verdicts reversed.
 
         Every row, because the verdict follows config, not the job. A first judgment (NULL -> verdict)
@@ -359,14 +359,23 @@ class JobsDb:
             for job_url, query_id in conn.execute(select(JobQueryRow.job_url, JobQueryRow.query_id)):
                 links[job_url].add(query_id)
             stored = conn.execute(
-                select(JobRow.job_url, JobRow.title, JobRow.company, JobRow.workplace_type, JobRow.is_relevant)
+                select(
+                    JobRow.job_url,
+                    JobRow.title,
+                    JobRow.company,
+                    JobRow.workplace_type,
+                    JobRow.description_lang,
+                    JobRow.is_relevant,
+                )
             ).all()
             # Update every row whose verdict differs. A NULL prior always differs, but that first
             # judgment is a decision, not a reversal, so it is written without counting as flipped.
             updates: list[dict] = []
             to_relevant = to_irrelevant = 0
             for row in stored:
-                verdict = predicate(row.title, row.company, row.workplace_type, links.get(row.job_url, set()))
+                verdict = predicate(
+                    row.title, row.company, row.workplace_type, row.description_lang, links.get(row.job_url, set())
+                )
                 if verdict == row.is_relevant:
                     continue
                 updates.append({"url": row.job_url, "is_relevant": verdict})

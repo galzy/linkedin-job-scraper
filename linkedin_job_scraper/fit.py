@@ -9,7 +9,7 @@ from collections.abc import Iterator, Sequence
 from loguru import logger
 
 from linkedin_job_scraper.constants import NO_DESCRIPTION
-from linkedin_job_scraper.verdicts import is_wellformed
+from linkedin_job_scraper.verdicts import PASS, is_wellformed
 
 DEFAULT_JUDGE_MODEL = "sonnet"
 BATCH_SIZE = 12  # ads per claude call, the size the rubric's pipeline was tuned on
@@ -65,10 +65,10 @@ The "hits" lines under each ad are regex-extracted pointers to speed reading; th
 {ads}
 
 Reply with only a JSON object, no code fences or commentary, mapping every jid to its verdict:
-{{"4261234567": "b: fluent German required; g?: Databricks stack", "4267654321": "", ...}}.
-A verdict is "" when no condition applies, or "letter: reason" / "letter?: reason" entries joined
+{{"4261234567": "b: fluent German required; g?: Databricks stack", "4267654321": "{clean}", ...}}.
+A verdict is "{clean}" when no condition applies, or "letter: reason" / "letter?: reason" entries joined
 by "; ", letters in alphabetical order, each reason a short lowercase noun phrase naming the ad's
-evidence. Every jid must appear: {jids}.
+evidence. Never reply with an empty string. Every jid must appear: {jids}.
 """
 
 
@@ -158,7 +158,9 @@ def judge_batches(
     batches = [rows[i : i + BATCH_SIZE] for i in range(0, len(rows), BATCH_SIZE)]
     for number, batch in enumerate(batches, 1):
         by_jid = {row.job_url.rstrip("/").rsplit("/", 1)[-1]: row.job_url for row in batch}
-        prompt = _PROMPT.format(rubric=rubric, ads="\n\n".join(_ad(row) for row in batch), jids=", ".join(by_jid))
+        prompt = _PROMPT.format(
+            rubric=rubric, ads="\n\n".join(_ad(row) for row in batch), jids=", ".join(by_jid), clean=PASS
+        )
         logger.info(f"Judging batch {number}/{len(batches)} ({len(batch)} ads)")
         for attempt in (1, 2):
             try:

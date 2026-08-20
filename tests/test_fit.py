@@ -10,6 +10,7 @@ from linkedin_job_scraper.constants import NO_DESCRIPTION
 from linkedin_job_scraper.fit import FitJudgeError, _ad, _parse, judge_batches
 from linkedin_job_scraper.job import Job
 from linkedin_job_scraper.store.db import JobsDb
+from linkedin_job_scraper.verdicts import PASS
 
 
 def row(jid="101", description="We build backend services in Python.", **overrides):
@@ -44,18 +45,24 @@ def test_a_missing_description_is_said_not_faked():
 
 
 def test_parse_reads_the_object_out_of_fences_and_prose():
-    reply = 'Here you go:\n```json\n{"101": "b: fluent German required", "102": ""}\n```'
-    assert _parse(reply, {"101", "102"}) == {"101": "b: fluent German required", "102": ""}
+    reply = 'Here you go:\n```json\n{"101": "b: fluent German required", "102": "ok"}\n```'
+    assert _parse(reply, {"101", "102"}) == {"101": "b: fluent German required", "102": "ok"}
 
 
 def test_parse_fails_when_a_jid_is_missing():
     with pytest.raises(FitJudgeError, match="missing"):
-        _parse('{"101": ""}', {"101", "102"})
+        _parse('{"101": "ok"}', {"101", "102"})
 
 
 def test_parse_fails_on_a_malformed_verdict():
     with pytest.raises(FitJudgeError, match="malformed"):
         _parse('{"101": "sounds nice"}', {"101"})
+
+
+def test_parse_fails_on_an_empty_verdict():
+    """Silence is what a judge that lost track returns; it must not import as a clean bill."""
+    with pytest.raises(FitJudgeError, match="malformed"):
+        _parse('{"101": ""}', {"101"})
 
 
 def test_parse_fails_without_json():
@@ -80,7 +87,7 @@ def test_judge_batches_gives_up_after_two_failures(monkeypatch):
 
 def test_a_failing_batch_keeps_what_earlier_batches_won(monkeypatch):
     """13 rows are two batches; the second dying must not take the first down with it."""
-    replies = iter([json.dumps({str(n): "" for n in range(100, 112)}), "boom", "boom"])
+    replies = iter([json.dumps({str(n): PASS for n in range(100, 112)}), "boom", "boom"])
     monkeypatch.setattr(fit, "_ask", lambda prompt, claude, model: next(replies))
 
     won = []
@@ -95,7 +102,7 @@ def test_a_rubric_with_braces_survives_prompt_building(monkeypatch):
 
     def ask(prompt, claude, model):
         captured["prompt"] = prompt
-        return '{"101": ""}'
+        return '{"101": "ok"}'
 
     monkeypatch.setattr(fit, "_ask", ask)
     list(judge_batches([row()], rubric="writing `{jid: verdict}` JSON", claude="claude"))
@@ -140,7 +147,7 @@ def test_export_writes_a_days_survivors_but_not_todays_file(tmp_path):
 def test_a_day_still_carrying_unjudged_rows_is_not_exported(tmp_path):
     db = day_db(
         ("2024-01-01", [a_job(), a_job(url="https://x/2/", title="Other")]),
-        judge={"https://x/1/": ""},
+        judge={"https://x/1/": PASS},
     )
     _export_fit_days(db, tmp_path, ["2024-01-01"], export_today=True)
     db.close()
@@ -149,7 +156,7 @@ def test_a_day_still_carrying_unjudged_rows_is_not_exported(tmp_path):
 
 
 def test_a_days_file_is_written_once(tmp_path):
-    db = day_db(("2024-01-01", [a_job()]), judge={"https://x/1/": ""})
+    db = day_db(("2024-01-01", [a_job()]), judge={"https://x/1/": PASS})
     (tmp_path / "new-jobs-2024-01-01.csv").write_text("sentinel", encoding="utf-8")
     _export_fit_days(db, tmp_path, ["2024-01-01"], export_today=True)
     db.close()

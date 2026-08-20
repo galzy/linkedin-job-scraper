@@ -2,6 +2,8 @@
 
 import re
 
+PASS = "ok"  # a judged ad no condition touches; "" cannot tell a clean reply from an empty one
+
 _ENTRY = re.compile(r"^\s*([a-g])(\??)\s*:")  # "c?: UK listing; g: Java" — letter, "?" if suspected, reason
 
 
@@ -11,9 +13,10 @@ def is_firm(verdict: str | None) -> bool:
 
 
 def is_wellformed(verdict: str) -> bool:
-    """Whether text parses as a verdict: empty, or code-headed entries joined by ";".
+    """Whether text parses as a verdict: ``PASS``, or code-headed entries joined by ";".
 
     A person may store free text as a note to self; a machine judge may not, so this is the gate
-    its output passes before ``import_verdicts`` sees it.
+    its output passes before ``import_verdicts`` sees it. Empty text fails it: a judge that loses
+    track returns that for every ad, and silence must not read as a clean bill.
     """
-    return verdict == "" or all(re.fullmatch(r"\s*[a-g]\??\s*:\s*\S.*", entry) for entry in verdict.split(";"))
+    return verdict == PASS or all(re.fullmatch(r"\s*[a-g]\??\s*:\s*\S.*", entry) for entry in verdict.split(";"))

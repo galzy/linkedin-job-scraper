@@ -6,14 +6,18 @@ import pytest
 
 from linkedin_job_scraper import fit
 from linkedin_job_scraper.cli import _export_fit_days
-from linkedin_job_scraper.constants import NO_DESCRIPTION
-from linkedin_job_scraper.fit import FitJudgeError, _ad, _parse, judge_batches
+from linkedin_job_scraper.fit import FitJudgeError, _ad, _parse, _settled, judge_batches, looks_lenient
 from linkedin_job_scraper.job import Job
 from linkedin_job_scraper.store.db import JobsDb
 from linkedin_job_scraper.verdicts import PASS
 
+READABLE = (
+    "We build backend services in Python and keep them running in production, working across "
+    "the API, the data model and the deployment pipeline with a small team that ships weekly."
+)
 
-def row(jid="101", description="We build backend services in Python.", **overrides):
+
+def row(jid="101", description=READABLE, **overrides):
     fields = dict(
         job_url=f"https://www.linkedin.com/jobs/view/{jid}/",
         title="Engineer",
@@ -39,9 +43,29 @@ def test_an_ad_carries_its_jid_hits_and_a_capped_description():
     assert len(text) < 4500
 
 
-def test_a_missing_description_is_said_not_faked():
-    assert "no description available" in _ad(row(description=None))
-    assert "no description available" in _ad(row(description=NO_DESCRIPTION))
+@pytest.mark.parametrize("description", [None, "", "- - - - -", "Could not find job description"])
+def test_an_unreadable_description_is_settled_not_guessed_at(description):
+    """A skeleton the fetch never filled reaches no judge: it waves such ads through about half the time."""
+    assert _settled(row(description=description)) == "d?: no readable description"
+
+
+def test_a_readable_ad_goes_to_the_judge():
+    """Language settles a layer earlier, in the relevance predicate, so no verdict here turns on it."""
+    assert _settled(row()) is None
+    assert _settled(row(description_lang="de")) is None
+
+
+def test_a_day_of_ordinary_verdicts_raises_no_alarm():
+    assert looks_lenient(2, 207) is False
+
+
+def test_a_day_that_cleared_too_many_raises_the_alarm():
+    """43 of 1,050 is the night the judge stopped reading; 1.2% is the most it has honestly cleared."""
+    assert looks_lenient(43, 1050) is True
+
+
+def test_a_day_too_small_to_read_a_share_from_raises_no_alarm():
+    assert looks_lenient(3, 11) is False
 
 
 def test_parse_reads_the_object_out_of_fences_and_prose():

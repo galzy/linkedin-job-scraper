@@ -12,6 +12,10 @@ Started as a fork of [cwwmbm/linkedinscraper](https://github.com/cwwmbm/linkedin
 ### Added
 - `description_lang_include`, a config keep-list of ISO 639-1 codes for the language a description is
   written in. A description too short to name a language is never dropped by it.
+- A rule settling an ad of under 25 words of prose as `d?: no readable description`, before any judge
+  call.
+- A guard on how much of a day comes back clean: over 3% of a day of at least 50 ads is logged as an
+  error and fails the run, that day's report still written.
 
 ### Changed
 - The language of a description is judged on its words of prose rather than its character count: a
